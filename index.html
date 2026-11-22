@@ -1430,7 +1430,7 @@
               <span class="field-label">2. Punch In <span class="req-star">*</span></span>
               <span id="punch-clock" class="duration-badge">🕘 --:--</span>
             </div>
-            <label for="punch-location" class="sub-label">Login Location <span class="req-star">*</span></label>
+            <label for="punch-location" class="sub-label">Location note <span class="hint-pill">(optional)</span></label>
             <input type="text" id="punch-location" class="input-ctrl" maxlength="120" placeholder="e.g. Head Office, Home, Client Site - Pune" autocomplete="off" />
             <div class="presets-row">
               <button type="button" class="preset-btn" onclick="document.getElementById('punch-location').value=this.getAttribute('data-loc-val');this.blur();" data-loc-val="Office">Office</button>
@@ -1441,7 +1441,7 @@
               <span>🟢 Punch In Now</span>
             </button>
             <p style="margin:10px 0 0 0; font-size:12.5px; color:var(--slate-500);">
-              Punch in as soon as you log in. At the end of the day, come back here to submit your work details.
+              Punch in as soon as you log in. <strong>Location access is required</strong>: your street address is captured automatically when you tap Punch In and again when you submit your EOD report (tap Allow when your phone asks). At the end of the day, come back here to submit your work details.
             </p>
             <button type="button" id="btn-manual-mode" class="preset-btn" style="margin-top:8px;">Forgot to punch in? Submit full report manually</button>
           </div>
@@ -1818,6 +1818,7 @@
         undo: null,
         toastTimer: null,
         manualMode: false,
+        gpsBusy: false,
         lastFormMode: "",
         logoutPrefillFor: ""
       };
@@ -1938,6 +1939,10 @@
           employeeName: empName,
           loginTime: loginVal,
           loginLocation: locVal,
+          loginGps: String(raw.loginGps || ""),
+          logoutGps: String(raw.logoutGps || ""),
+          loginAddress: String(raw.loginAddress || ""),
+          logoutAddress: String(raw.logoutAddress || ""),
           status: statusVal,
           logoutTime: logoutVal,
           durationMinutes: mins,
@@ -2429,6 +2434,10 @@
           login: e.loginTime,
           loginLocation: e.loginLocation || "",
           location: e.loginLocation || "",
+          loginGps: e.loginGps || "",
+          logoutGps: e.logoutGps || "",
+          loginAddress: e.loginAddress || "",
+          logoutAddress: e.logoutAddress || "",
           logoutTime: e.logoutTime || "",
           logout: e.logoutTime || "",
           durationMinutes: e.durationMinutes || 0,
@@ -2499,7 +2508,104 @@
         updatePunchClock();
       }
 
-      function punchIn() {
+      /* ---------- GPS helpers ---------- */
+      function gpsToStr(g) {
+        return g ? (g.lat + "," + g.lng + "," + g.acc) : "";
+      }
+
+      function mapUrl(gpsStr) {
+        var p = String(gpsStr || "").split(",");
+        if (p.length < 2) return "";
+        var la = parseFloat(p[0]);
+        var ln = parseFloat(p[1]);
+        if (isNaN(la) || isNaN(ln)) return "";
+        return "https://www.google.com/maps?q=" + la + "," + ln;
+      }
+
+      function setBtnBusy(btn, busy) {
+        if (!btn) return;
+        var sp = btn.querySelector("span");
+        btn.disabled = !!busy;
+        if (!sp) return;
+        if (busy) {
+          if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", sp.textContent);
+          sp.textContent = "📡 Getting your location…";
+        } else if (btn.getAttribute("data-label")) {
+          sp.textContent = btn.getAttribute("data-label");
+          btn.removeAttribute("data-label");
+        }
+      }
+
+      function setGpsBusy(busy) {
+        setBtnBusy(byId("btn-punch-in"), busy);
+        setBtnBusy(byId("btn-submit-eod"), busy);
+      }
+
+      function getGps(cb) {
+        var finished = false;
+        function finish(val) {
+          if (finished) return;
+          finished = true;
+          cb(val);
+        }
+        if (!navigator.geolocation) { finish(null); return; }
+        var guard = setTimeout(function () { finish(null); }, 20000);
+        try {
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              clearTimeout(guard);
+              finish({
+                lat: Number(pos.coords.latitude.toFixed(6)),
+                lng: Number(pos.coords.longitude.toFixed(6)),
+                acc: Math.round(pos.coords.accuracy || 0)
+              });
+            },
+            function () { clearTimeout(guard); finish(null); },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+          );
+        } catch (e) {
+          clearTimeout(guard);
+          finish(null);
+        }
+      }
+
+      var GPS_REQUIRED_MSG = "Location is required. Please allow location access (Phone Settings > Safari or Chrome > Location > Allow), then try again.";
+
+      /* Street address from coordinates (Google Maps via your Apps Script). Best effort, 9s max. */
+      function reverseGeocode(g, cb) {
+        var done = false;
+        function finish(v) {
+          if (done) return;
+          done = true;
+          cb(v || "");
+        }
+        var timer = setTimeout(function () { finish(""); }, 9000);
+        try {
+          var url = getCurrentExecUrl();
+          var sep = url.indexOf("?") === -1 ? "?" : "&";
+          fetch(url + sep + "action=geocode&lat=" + g.lat + "&lng=" + g.lng + "&_ts=" + Date.now(), {
+            method: "GET",
+            redirect: "follow"
+          })
+            .then(function (res) { return res.text(); })
+            .then(function (txt) {
+              clearTimeout(timer);
+              var d = null;
+              try { d = JSON.parse(txt); } catch (e) { d = null; }
+              finish(d && d.ok && d.address ? String(d.address) : "");
+            })
+            .catch(function () {
+              clearTimeout(timer);
+              finish("");
+            });
+        } catch (e) {
+          clearTimeout(timer);
+          finish("");
+        }
+      }
+
+      function punchIn(gps, addr) {
+        if (State.gpsBusy) return;
         clearFormErrors();
         var selEl = byId("eod-staff-select");
         var manEl = byId("eod-manual-name");
@@ -2518,11 +2624,32 @@
           updateFormMode();
           return;
         }
-        var locationVal = locEl ? normalizeSpaces(locEl.value) : "";
-        if (!locationVal) {
-          showFormError("Please enter your Login Location.", locEl);
+
+        if (gps === undefined) {
+          State.gpsBusy = true;
+          setGpsBusy(true);
+          getGps(function (g) {
+            if (!g) {
+              State.gpsBusy = false;
+              setGpsBusy(false);
+              showFormError(GPS_REQUIRED_MSG, null);
+              return;
+            }
+            reverseGeocode(g, function (a) {
+              State.gpsBusy = false;
+              setGpsBusy(false);
+              punchIn(g, a || "");
+            });
+          });
           return;
         }
+        if (!gps) {
+          showFormError(GPS_REQUIRED_MSG, null);
+          return;
+        }
+
+        var locationVal = locEl ? normalizeSpaces(locEl.value) : "";
+        if (!locationVal) locationVal = "GPS location";
 
         var nowMs = Date.now();
         var entry = {
@@ -2531,6 +2658,10 @@
           employeeName: employeeName,
           loginTime: nowHHMM(),
           loginLocation: locationVal,
+          loginGps: gpsToStr(gps),
+          loginAddress: addr || "",
+          logoutGps: "",
+          logoutAddress: "",
           logoutTime: "",
           durationMinutes: 0,
           durationText: "",
@@ -2560,7 +2691,8 @@
         if (sSum) {
           sSum.innerHTML =
             "<strong>" + escHtml(employeeName) + "</strong> • " + escHtml(prettyTime12(entry.loginTime)) +
-            " • 📍 " + escHtml(locationVal) + "<br>Come back at the end of the day to submit your EOD report.";
+            (addr ? "<br>📍 " + escHtml(addr) : "<br>📍 Location captured") +
+            "<br>Come back at the end of the day to submit your EOD report.";
         }
         if (sBanner) {
           sBanner.classList.remove("hidden");
@@ -2720,7 +2852,8 @@
         }
       }
 
-      function submitEodReport() {
+      function submitEodReport(gps, addr) {
+        if (State.gpsBusy) return;
         clearFormErrors();
 
         var dateEl = byId("eod-date");
@@ -2773,6 +2906,29 @@
           return;
         }
 
+        if (gps === undefined) {
+          State.gpsBusy = true;
+          setGpsBusy(true);
+          getGps(function (g) {
+            if (!g) {
+              State.gpsBusy = false;
+              setGpsBusy(false);
+              showFormError(GPS_REQUIRED_MSG, null);
+              return;
+            }
+            reverseGeocode(g, function (a) {
+              State.gpsBusy = false;
+              setGpsBusy(false);
+              submitEodReport(g, a || "");
+            });
+          });
+          return;
+        }
+        if (!gps) {
+          showFormError(GPS_REQUIRED_MSG, null);
+          return;
+        }
+
         var issueText = issEl ? issEl.value.trim() : "";
         var hasIssue = (State.issueFlag === "issue" || issueText.length > 0);
         if (hasIssue && !issueText) {
@@ -2799,10 +2955,16 @@
           tomorrowPlan: tomorrowText,
           createdAtMs: nowMs,
           status: "done",
+          loginGps: openPunch ? (openPunch.loginGps || "") : "",
+          logoutGps: gpsToStr(gps),
+          logoutAddress: addr || "",
+          loginAddress: openPunch ? (openPunch.loginAddress || "") : "",
           submittedAt: new Date(nowMs).toISOString()
         };
 
         if (openPunch) {
+          openPunch.logoutGps = entry.logoutGps;
+          openPunch.logoutAddress = entry.logoutAddress;
           openPunch.logoutTime = entry.logoutTime;
           openPunch.durationMinutes = entry.durationMinutes;
           openPunch.durationText = entry.durationText;
@@ -3053,6 +3215,8 @@
                   '<span class="tag-pill">' + escHtml(prettyDate(item.date)) + "</span>" +
                   '<span class="tag-pill shift">⏱️ ' + escHtml(shift) + "</span>" +
                   (item.loginLocation ? '<span class="tag-pill">📍 ' + escHtml(item.loginLocation) + "</span>" : "") +
+                  (IS_ADMIN && mapUrl(item.loginGps) ? '<a class="tag-pill" style="text-decoration:none; white-space:normal; text-align:left;" href="' + escHtml(mapUrl(item.loginGps)) + '" target="_blank" rel="noopener noreferrer">🗺️ In: ' + escHtml(item.loginAddress || "View on map") + '</a>' : "") +
+                  (IS_ADMIN && mapUrl(item.logoutGps) ? '<a class="tag-pill" style="text-decoration:none; white-space:normal; text-align:left;" href="' + escHtml(mapUrl(item.logoutGps)) + '" target="_blank" rel="noopener noreferrer">🗺️ Out: ' + escHtml(item.logoutAddress || "View on map") + '</a>' : "") +
                 "</div>" +
                 '<span class="status-tag ' + (isOpen ? "ok" : (flagged ? "warn" : "ok")) + '">' +
                   (isOpen ? "🟢 Punched In • EOD Pending" : (flagged ? "⚠️ Needs Support" : "✅ Smooth Day")) +
@@ -3120,6 +3284,10 @@
           }
           var dur = l.durationText || formatDuration(l.durationMinutes || calcShiftMins(l.loginTime, l.logoutTime));
           lines.push((j + 1) + ". *" + l.employeeName + "* (" + prettyTime12(l.loginTime) + "–" + prettyTime12(l.logoutTime) + ", " + dur + (l.loginLocation ? ", 📍 " + l.loginLocation : "") + ")");
+          if (IS_ADMIN && (mapUrl(l.loginGps) || mapUrl(l.logoutGps))) {
+            if (mapUrl(l.loginGps)) lines.push("   • 📍 In: " + (l.loginAddress || "see map") + " " + mapUrl(l.loginGps));
+            if (mapUrl(l.logoutGps)) lines.push("   • 📍 Out: " + (l.logoutAddress || "see map") + " " + mapUrl(l.logoutGps));
+          }
           lines.push("   • Done: " + singleLine(l.activities));
           if (l.issueDetails && l.issueDetails.trim()) {
             lines.push("   • ⚠️ Issue/Support: " + singleLine(l.issueDetails));
@@ -3185,7 +3353,11 @@
           "Issue Status",
           "Issues / Support Needed",
           "Plans for Tomorrow",
-          "Status"
+          "Status",
+          "Login Address",
+          "Login Map",
+          "Logout Address",
+          "Logout Map"
         ];
 
         function cell(v) {
@@ -3209,7 +3381,11 @@
             flagged ? "Needs Support" : "Smooth Day",
             l.issueDetails || "",
             l.tomorrowPlan || "",
-            l.status === "in" ? "Punched In (EOD pending)" : "Completed"
+            l.status === "in" ? "Punched In (EOD pending)" : "Completed",
+            IS_ADMIN ? (l.loginAddress || "") : "",
+            IS_ADMIN ? mapUrl(l.loginGps) : "",
+            IS_ADMIN ? (l.logoutAddress || "") : "",
+            IS_ADMIN ? mapUrl(l.logoutGps) : ""
           ].map(cell).join(","));
         }
         return "\uFEFF" + rows.join("\n");
@@ -3418,10 +3594,10 @@
         if (btnIssue) btnIssue.onclick = function () { setIssueMode("issue", true); };
 
         var btnSubmit = byId("btn-submit-eod");
-        if (btnSubmit) btnSubmit.onclick = submitEodReport;
+        if (btnSubmit) btnSubmit.onclick = function () { submitEodReport(); };
 
         var btnPunch = byId("btn-punch-in");
-        if (btnPunch) btnPunch.onclick = punchIn;
+        if (btnPunch) btnPunch.onclick = function () { punchIn(); };
         var btnManualMode = byId("btn-manual-mode");
         if (btnManualMode) btnManualMode.onclick = function () { State.manualMode = true; updateFormMode(); };
         var btnCancelManual = byId("btn-cancel-manual");
