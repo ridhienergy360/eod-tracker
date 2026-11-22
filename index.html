@@ -2170,6 +2170,10 @@
         if (!IS_ADMIN) {
           if (btn) btn.style.display = "none";
           if (panel) panel.style.display = "none";
+          var sheetLink = byId("header-sheet-link");
+          var copyLink = byId("header-copy-sheet-btn");
+          if (sheetLink) sheetLink.style.display = "none";
+          if (copyLink) copyLink.style.display = "none";
         }
       }
 
