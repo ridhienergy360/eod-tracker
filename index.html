@@ -1440,6 +1440,13 @@
                   <button type="button" class="preset-btn" data-time-target="login" data-time-val="09:30">09:30 AM</button>
                   <button type="button" class="preset-btn" data-time-target="login" data-time-val="10:00">10:00 AM</button>
                 </div>
+                <label for="eod-login-location" class="sub-label" style="margin-top:12px;">Login Location <span class="req-star">*</span></label>
+                <input type="text" id="eod-login-location" class="input-ctrl" maxlength="120" placeholder="e.g. Head Office, Home, Client Site - Pune" autocomplete="off" />
+                <div class="presets-row">
+                  <button type="button" class="preset-btn" onclick="document.getElementById('eod-login-location').value=this.getAttribute('data-loc-val');this.blur();" data-loc-val="Office">Office</button>
+                  <button type="button" class="preset-btn" onclick="document.getElementById('eod-login-location').value=this.getAttribute('data-loc-val');this.blur();" data-loc-val="Work From Home">Work From Home</button>
+                  <button type="button" class="preset-btn" onclick="document.getElementById('eod-login-location').value=this.getAttribute('data-loc-val');this.blur();" data-loc-val="Client Site">Client Site</button>
+                </div>
               </div>
 
               <div>
@@ -1879,6 +1886,7 @@
 
         var loginVal = String(raw.loginTime || raw.login || "");
         var logoutVal = String(raw.logoutTime || raw.logout || "");
+        var locVal = String(raw.loginLocation || raw.location || "");
         var mins = typeof raw.durationMinutes === "number"
           ? raw.durationMinutes
           : calcShiftMins(loginVal, logoutVal);
@@ -1893,6 +1901,7 @@
           date: dateStr || todayISO(),
           employeeName: empName,
           loginTime: loginVal,
+          loginLocation: locVal,
           logoutTime: logoutVal,
           durationMinutes: mins,
           durationText: durText,
@@ -2173,6 +2182,12 @@
           var sheetLink = byId("header-sheet-link");
           var copyLink = byId("header-copy-sheet-btn");
           if (sheetLink) sheetLink.style.display = "none";
+          var addRow = document.querySelector(".add-staff-row");
+          if (addRow) addRow.style.display = "none";
+          var clearBar = byId("clear-logs-confirm-bar");
+          if (clearBar) clearBar.style.display = "none";
+          var clearBtnEl = byId("btn-ask-clear-logs");
+          if (clearBtnEl) clearBtnEl.style.display = "none";
           if (copyLink) copyLink.style.display = "none";
         }
       }
@@ -2244,7 +2259,7 @@
             var pos = Math.min(u.index, STAFF.length);
             STAFF.splice(pos, 0, u.name);
             persistLocalStaff();
-            postToSheet({ action: "sync_all", logs: LOGS, staff: STAFF }, false, "staff restore");
+            postToSheet({ action: "sync_all", staff: STAFF }, false, "staff restore");
           }
           renderAll();
           showToast('Restored "' + u.name + '".');
@@ -2263,7 +2278,6 @@
           }
           LOGS = merged;
           persistLocalLogs();
-          postToSheet({ action: "sync_all", logs: LOGS, staff: STAFF }, false, "log restore");
           renderAll();
           showToast("Restored " + u.logs.length + " EOD log(s).");
         }
@@ -2458,7 +2472,7 @@
       function clearFormErrors() {
         var errBanner = byId("eod-error-banner");
         if (errBanner) errBanner.classList.add("hidden");
-        var ids = ["eod-staff-select", "eod-manual-name", "eod-login", "eod-logout", "eod-activities"];
+        var ids = ["eod-staff-select", "eod-manual-name", "eod-login", "eod-login-location", "eod-logout", "eod-activities"];
         for (var i = 0; i < ids.length; i++) {
           var el = byId(ids[i]);
           if (el) el.classList.remove("has-error");
@@ -2506,8 +2520,14 @@
 
         var loginVal = inEl ? inEl.value : "";
         var logoutVal = outEl ? outEl.value : "";
+        var locEl = byId("eod-login-location");
+        var locationVal = locEl ? normalizeSpaces(locEl.value) : "";
         if (!loginVal) {
           showFormError("Please select your Login Time.", inEl);
+          return;
+        }
+        if (!locationVal) {
+          showFormError("Please enter your Login Location.", locEl);
           return;
         }
         if (!logoutVal) {
@@ -2537,6 +2557,7 @@
           date: reportDate,
           employeeName: employeeName,
           loginTime: loginVal,
+          loginLocation: locationVal,
           logoutTime: logoutVal,
           durationMinutes: mins,
           durationText: durText,
@@ -2564,6 +2585,8 @@
             name: entry.employeeName,
             loginTime: entry.loginTime,
             login: entry.loginTime,
+            loginLocation: entry.loginLocation,
+            location: entry.loginLocation,
             logoutTime: entry.logoutTime,
             logout: entry.logoutTime,
             durationMinutes: entry.durationMinutes,
@@ -2604,6 +2627,7 @@
 
       /* Manager Staff & Filtered Logs */
       function addStaff(rawName) {
+        if (!IS_ADMIN) return;
         var clean = normalizeSpaces(rawName);
         if (!clean) {
           showToast("Please enter an employee name.");
@@ -2618,17 +2642,18 @@
         STAFF.push(clean);
         persistLocalStaff();
         renderAll();
-        postToSheet({ action: "sync_all", logs: LOGS, staff: STAFF }, false, "staff list");
+        postToSheet({ action: "sync_all", staff: STAFF }, false, "staff list");
         showToast('Added "' + clean + '".');
       }
 
       function removeStaff(name) {
+        if (!IS_ADMIN) return;
         var idx = STAFF.indexOf(name);
         if (idx === -1) return;
         STAFF.splice(idx, 1);
         persistLocalStaff();
         renderAll();
-        postToSheet({ action: "sync_all", logs: LOGS, staff: STAFF }, false, "staff list");
+        postToSheet({ action: "sync_all", staff: STAFF }, false, "staff list");
         showToast('Removed "' + name + '".', {
           type: "staff",
           label: "Undo",
@@ -2733,7 +2758,7 @@
                       (done ? "✓ Submitted" : "• Pending") +
                     "</span>" +
                   "</div>" +
-                  '<button type="button" class="btn-remove" data-remove-staff="' + escHtml(name) + '">Remove</button>' +
+                  (IS_ADMIN ? '<button type="button" class="btn-remove" data-remove-staff="' + escHtml(name) + '">Remove</button>' : "") +
                 "</div>";
             }
             rosterBox.innerHTML = rHtml;
@@ -2749,7 +2774,7 @@
 
         var clearBtn = byId("btn-ask-clear-logs");
         if (clearBtn) {
-          if (LOGS.length > 0) clearBtn.classList.remove("hidden");
+          if (IS_ADMIN && LOGS.length > 0) clearBtn.classList.remove("hidden");
           else clearBtn.classList.add("hidden");
         }
 
@@ -2784,6 +2809,7 @@
                   '<span class="log-name">' + escHtml(item.employeeName) + "</span>" +
                   '<span class="tag-pill">' + escHtml(prettyDate(item.date)) + "</span>" +
                   '<span class="tag-pill shift">⏱️ ' + escHtml(shift) + "</span>" +
+                  (item.loginLocation ? '<span class="tag-pill">📍 ' + escHtml(item.loginLocation) + "</span>" : "") +
                 "</div>" +
                 '<span class="status-tag ' + (flagged ? "warn" : "ok") + '">' +
                   (flagged ? "⚠️ Needs Support" : "✅ Smooth Day") +
@@ -2809,9 +2835,11 @@
                   "</div>"
                 : "") +
 
-              '<div class="log-footer">' +
-                '<button type="button" class="preset-btn" style="color:var(--red-700);" data-delete-log="' + escHtml(item.id) + '">Delete</button>' +
-              "</div>" +
+              (IS_ADMIN
+                ? '<div class="log-footer">' +
+                    '<button type="button" class="preset-btn" style="color:var(--red-700);" data-delete-log="' + escHtml(item.id) + '">Delete</button>' +
+                  "</div>"
+                : "") +
             "</article>";
         }
 
@@ -2841,7 +2869,7 @@
         for (var j = 0; j < list.length; j++) {
           var l = list[j];
           var dur = l.durationText || formatDuration(l.durationMinutes || calcShiftMins(l.loginTime, l.logoutTime));
-          lines.push((j + 1) + ". *" + l.employeeName + "* (" + prettyTime12(l.loginTime) + "–" + prettyTime12(l.logoutTime) + ", " + dur + ")");
+          lines.push((j + 1) + ". *" + l.employeeName + "* (" + prettyTime12(l.loginTime) + "–" + prettyTime12(l.logoutTime) + ", " + dur + (l.loginLocation ? ", 📍 " + l.loginLocation : "") + ")");
           lines.push("   • Done: " + singleLine(l.activities));
           if (l.issueDetails && l.issueDetails.trim()) {
             lines.push("   • ⚠️ Issue/Support: " + singleLine(l.issueDetails));
@@ -2900,6 +2928,7 @@
           "Date",
           "Employee Name",
           "Login Time",
+          "Login Location",
           "Logout Time",
           "Shift Duration",
           "Activities Done",
@@ -2922,6 +2951,7 @@
             l.date,
             l.employeeName,
             l.loginTime,
+            l.loginLocation || "",
             l.logoutTime,
             dur,
             l.activities || "",
@@ -3207,6 +3237,7 @@
         }
         if (btnConfirmClear) {
           btnConfirmClear.onclick = function () {
+            if (!IS_ADMIN) return;
             var bar = byId("clear-logs-confirm-bar");
             if (bar) bar.classList.add("hidden");
             var snapshot = LOGS.slice();
@@ -3251,6 +3282,13 @@
         var btnPushSync = byId("btn-push-sync-sheet");
         if (btnPushSync) {
           btnPushSync.onclick = function () {
+            var okPush = window.confirm(
+              "WARNING: This will REPLACE the entire Google Sheet with the " + LOGS.length +
+              " log(s) and " + STAFF.length + " staff stored on THIS device.\n\n" +
+              "Any entries in the sheet that are not on this device will be permanently lost.\n\n" +
+              "Tip: tap 'Pull From Sheet' first. Continue?"
+            );
+            if (!okPush) return;
             postToSheet({
               action: "sync_all",
               logs: LOGS,
@@ -3433,7 +3471,7 @@
           }
 
           var delLogNode = target.closest("[data-delete-log]");
-          if (delLogNode) {
+          if (delLogNode && IS_ADMIN) {
             var delId = delLogNode.getAttribute("data-delete-log");
             var deletedItem = null;
             LOGS = LOGS.filter(function (l) {
