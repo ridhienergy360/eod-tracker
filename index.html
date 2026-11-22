@@ -2031,6 +2031,8 @@
         SHEET_URL: "energy360_eod_sheet_url_v2",
         LAST_STAFF: "energy360_eod_last_staff_v1",
         WA_DISMISSED: "energy360_eod_wa_dismissed_v1",
+        PINMEM: "energy360_eod_pinmem_v1",
+        REMEMBER_PREF: "energy360_eod_remember_pref_v1",
         FIELD: "energy360_eod_field_v1"
       };
 
@@ -2722,11 +2724,68 @@
       }
 
       /* ---------- Employee PIN ---------- */
+      /* ---------- "Keep me signed in on this device" ---------- */
+      var REMEMBER_HOURS = 12;
+
+      function sameName(a, b) {
+        return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+      }
+
+      function loadPinMem() {
+        try {
+          var raw = SafeStorage.get(KEYS.PINMEM);
+          if (!raw) return null;
+          var m = JSON.parse(raw);
+          if (!m || !m.name || !/^\d{4,6}$/.test(String(m.pin || "")) || Number(m.exp) < Date.now()) {
+            SafeStorage.set(KEYS.PINMEM, "");
+            return null;
+          }
+          return m;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function forgetPinMem() {
+        SafeStorage.set(KEYS.PINMEM, "");
+        State.sessionPin = null;
+      }
+
+      function rememberPref() {
+        return SafeStorage.get(KEYS.REMEMBER_PREF) !== "0";
+      }
+
+      function rememberAfterVerify(name, pin) {
+        State.sessionPin = { name: name, pin: pin };
+        if (rememberPref()) {
+          SafeStorage.set(KEYS.PINMEM, JSON.stringify({ name: name, pin: pin, exp: Date.now() + REMEMBER_HOURS * 3600 * 1000 }));
+        } else {
+          SafeStorage.set(KEYS.PINMEM, "");
+        }
+        refreshPinUI();
+      }
+
+      /* typed PIN wins; otherwise use the remembered PIN, but only for the SAME name */
+      function readPin(name, pinEl) {
+        var typed = pinEl ? pinEl.value.trim() : "";
+        if (/^\d{4,6}$/.test(typed)) return typed;
+        var m = loadPinMem();
+        if (m && sameName(m.name, name)) return m.pin;
+        return "";
+      }
+
       function verifyPin(name, pin, cb) {
         execGet({ action: "verifyPin", name: name, pin: pin }, function (d) {
           if (!d || !d.ok || typeof d.valid === "undefined") {
             cb(false, "Could not check your PIN. Check your internet, or ask your admin to update the Google script.");
             return;
+          }
+          if (d.valid !== true) {
+            var m = loadPinMem();
+            if (m && sameName(m.name, name) && m.pin === pin) {   /* the remembered PIN no longer works (changed or locked) */
+              forgetPinMem();
+              refreshPinUI();
+            }
           }
           cb(d.valid === true, d.valid === true ? "" : (d.message || "Incorrect PIN."));
         });
@@ -2734,8 +2793,67 @@
 
       function pinForName(name) {
         var sp = State.sessionPin;
-        if (sp && String(sp.name).trim().toLowerCase() === String(name).trim().toLowerCase()) return sp.pin;
+        if (sp && sameName(sp.name, name)) return sp.pin;
+        var m = loadPinMem();
+        if (m && sameName(m.name, name)) return m.pin;
         return "";
+      }
+
+      var PIN_FIELDS = [
+        { id: "eod-pin", who: function () { return currentEmployeeName(); } },
+        { id: "fw-pin", who: function () { return fwName(); } },
+        { id: "edit-pin", who: function () {
+            for (var i = 0; i < LOGS.length; i++) { if (LOGS[i].id === State.editId) return LOGS[i].employeeName; }
+            return currentEmployeeName();
+          } }
+      ];
+
+      function untilText(ts) {
+        var d = new Date(ts);
+        return prettyTime12(pad2(d.getHours()) + ":" + pad2(d.getMinutes()));
+      }
+
+      function refreshPinUI() {
+        var mem = loadPinMem();
+        for (var i = 0; i < PIN_FIELDS.length; i++) {
+          var input = byId(PIN_FIELDS[i].id);
+          if (!input || !input.parentNode) continue;
+          var group = input.parentNode;
+          var label = group.querySelector("label[for='" + PIN_FIELDS[i].id + "']");
+          var rem = group.querySelector(".pin-remember");
+          var signed = group.querySelector(".pin-signed");
+          if (!rem) {
+            rem = document.createElement("label");
+            rem.className = "pin-remember";
+            rem.style.cssText = "display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13px; color:var(--slate-600);";
+            rem.innerHTML = '<input type="checkbox" class="pin-remember-cb" style="width:18px; height:18px;"> <span>Keep me signed in on this device for ' + REMEMBER_HOURS + " hours</span>";
+            group.appendChild(rem);
+            rem.querySelector("input").onchange = function () {
+              var on = this.checked;
+              SafeStorage.set(KEYS.REMEMBER_PREF, on ? "1" : "0");
+              if (!on) { SafeStorage.set(KEYS.PINMEM, ""); }
+              refreshPinUI();
+            };
+          }
+          if (!signed) {
+            signed = document.createElement("div");
+            signed.className = "pin-signed";
+            signed.style.cssText = "background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; border-radius:12px; padding:10px 12px; font-size:13.5px; line-height:1.5;";
+            group.appendChild(signed);
+          }
+          var cb = rem.querySelector("input");
+          if (cb) cb.checked = rememberPref();
+          var who = PIN_FIELDS[i].who();
+          var isSigned = !!(mem && who && sameName(mem.name, who));
+          if (label) label.style.display = isSigned ? "none" : "";
+          input.style.display = isSigned ? "none" : "";
+          rem.style.display = isSigned ? "none" : "";
+          signed.style.display = isSigned ? "" : "none";
+          if (isSigned) {
+            signed.innerHTML = "🔓 <strong>Signed in on this device</strong> as " + escHtml(mem.name) + " until " + escHtml(untilText(mem.exp)) +
+              ' <button type="button" class="preset-btn" data-pin-forget="1" style="margin-left:6px;">Not you? Sign out</button>';
+          }
+        }
       }
 
       function randomPin() {
@@ -2977,6 +3095,7 @@
           try { updateFormMode(); updateTodayBadge(); } catch (e0) {}
         }
         State.dayStamp = nowDay;
+        try { refreshPinUI(); } catch (e1) {}
         var c = byId("punch-clock");
         if (c) c.textContent = "🕘 " + prettyTime12(nowHHMM());
       }
@@ -3268,7 +3387,7 @@
 
         if (gps === undefined) {
           var pinEl = byId("eod-pin");
-          var pinVal = pinEl ? pinEl.value.trim() : "";
+          var pinVal = readPin(employeeName, pinEl);
           if (!/^\d{4,6}$/.test(pinVal)) {
             showFormError("Please enter your PIN (4 to 6 digits).", pinEl);
             return;
@@ -3283,7 +3402,7 @@
               showFormError(pinMsg, pinEl);
               return;
             }
-            State.sessionPin = { name: employeeName, pin: pinVal };
+            rememberAfterVerify(employeeName, pinVal);
             getGps(function (g) {
               if (!g) {
                 State.gpsBusy = false;
@@ -3432,6 +3551,7 @@
 
         updateFormMode();
         renderEditCard();
+        refreshPinUI();
       }
 
       function updateShiftDuration() {
@@ -3576,7 +3696,7 @@
 
         if (gps === undefined) {
           var pinEl = byId("eod-pin");
-          var pinVal = pinEl ? pinEl.value.trim() : "";
+          var pinVal = readPin(employeeName, pinEl);
           if (!/^\d{4,6}$/.test(pinVal)) {
             showFormError("Please enter your PIN (4 to 6 digits).", pinEl);
             return;
@@ -3591,7 +3711,7 @@
               showFormError(pinMsg, pinEl);
               return;
             }
-            State.sessionPin = { name: employeeName, pin: pinVal };
+            rememberAfterVerify(employeeName, pinVal);
             getGps(function (g) {
               if (!g) {
                 State.gpsBusy = false;
@@ -3879,7 +3999,7 @@
         var name = fwName();
         var site = normalizeSpaces(siteEl ? siteEl.value : "");
         var purpose = normalizeSpaces(purEl ? purEl.value : "");
-        var pin = pinEl ? pinEl.value.trim() : "";
+        var pin = readPin(name, pinEl);
 
         if (!name) { fwShowError("Please select your name.", nameEl); return; }
         if (!site) { fwShowError("Please enter the site or client name.", siteEl); return; }
@@ -3896,7 +4016,7 @@
             fwShowError(pinMsg, pinEl);
             return;
           }
-          State.sessionPin = { name: name, pin: pin };
+          rememberAfterVerify(name, pin);
           getGps(function (g) {
             if (!g) {
               done();
@@ -3953,7 +4073,7 @@
         var desc = normalizeSpaces(descEl ? descEl.value : "");
         var site = normalizeSpaces(siteEl ? siteEl.value : "");
         var date = (dateEl && dateEl.value) ? dateEl.value : todayISO();
-        var pin = pinEl ? pinEl.value.trim() : "";
+        var pin = readPin(name, pinEl);
 
         if (!name) { fwShowError("Please select your name.", nameEl); return; }
         if (!isFinite(amount) || amount <= 0) { fwShowError("Please enter a valid amount greater than 0.", amtEl); return; }
@@ -3974,7 +4094,7 @@
             fwShowError(pinMsg, pinEl);
             return;
           }
-          State.sessionPin = { name: name, pin: pin };
+          rememberAfterVerify(name, pin);
           var x = {
             id: fwRandId("EXP"),
             date: date,
@@ -4009,7 +4129,7 @@
         for (var i = 0; i < list.length; i++) { if (list[i].id === id) { item = list[i]; break; } }
         if (!item) return;
         var pinEl = byId("fw-pin");
-        var pin = pinEl ? pinEl.value.trim() : "";
+        var pin = readPin(item.employeeName, pinEl);
         if (!/^\d{4,6}$/.test(pin)) { fwShowError("Enter your PIN above, then tap Retry again.", pinEl); return; }
         State.fwBusy = true;
         verifyPin(item.employeeName, pin, function (ok, msg) {
@@ -4019,7 +4139,7 @@
             fwShowError(msg, pinEl);
             return;
           }
-          State.sessionPin = { name: item.employeeName, pin: pin };
+          rememberAfterVerify(item.employeeName, pin);
           item.status = "sending";
           persistField();
           if (kind === "visit") postToSheet({ action: "save_visit", visit: visitPayload(item), pin: pin }, false, "site check-in retry");
@@ -4096,6 +4216,7 @@
           box.innerHTML = html;
         }
 
+        refreshPinUI();
         if (IS_ADMIN) {
           if ((State.activeTab === "expenses" || State.activeTab === "visits") && !FIELD_REPORT.loaded && !FIELD_REPORT.loading) loadFieldReport();
           renderExpensesReport();
@@ -4606,6 +4727,7 @@
         var sm = byId("edit-summary");
         if (sm) sm.textContent = prettyDate(l.date) + " • " + prettyTime12(l.loginTime) + " – " + prettyTime12(l.logoutTime) + " (times stay as they are)";
         var b = byId("edit-error"); if (b) b.classList.add("hidden");
+        refreshPinUI();
         var p = byId("edit-panel");
         if (p) {
           p.classList.remove("hidden");
@@ -4622,7 +4744,7 @@
         var iss = byId("edit-issues").value.trim();
         var tom = byId("edit-tomorrow").value.trim();
         var pinEl = byId("edit-pin");
-        var pin = pinEl.value.trim();
+        var pin = readPin(l.employeeName, pinEl);
         if (!act) { editShowError("Activities cannot be empty."); return; }
         if (!/^\d{4,6}$/.test(pin)) { editShowError("Please enter your PIN (4 to 6 digits)."); return; }
         var btn = byId("btn-edit-save");
@@ -4632,7 +4754,7 @@
           State.gpsBusy = false;
           setBtnBusy(btn, false);
           if (!ok) { pinEl.value = ""; editShowError(msg); return; }
-          State.sessionPin = { name: l.employeeName, pin: pin };
+          rememberAfterVerify(l.employeeName, pin);
           /* only the work details change: times, GPS, addresses and status stay exactly as they were */
           l.activities = act;
           l.issueDetails = iss;
@@ -5535,6 +5657,14 @@
             SafeStorage.set(KEYS.LAST_STAFF, picked);
             clearFormErrors();
             renderFormTab();
+            return;
+          }
+
+          var forgetNode = target.closest("[data-pin-forget]");
+          if (forgetNode) {
+            forgetPinMem();
+            refreshPinUI();
+            showToast("Signed out on this device.");
             return;
           }
 
