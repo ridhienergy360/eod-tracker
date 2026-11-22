@@ -2096,6 +2096,10 @@
                 throw new Error("Sheet response error: " + detail);
               }
 
+              if (!data.version && IS_ADMIN) {
+                showToast("⚠️ Your Google Apps Script is an OLD version. Redeploy it as a New version.");
+              }
+
               /* Merge logs by id cleanly */
               var logMap = {};
               for (var i = 0; i < LOGS.length; i++) {
@@ -2164,6 +2168,45 @@
         }
       }
 
+      /* Confirms a punch/EOD really reached the sheet (saves are sent "no-cors", so errors are otherwise invisible). */
+      function verifySaved(log, attempt) {
+        function warn() {
+          setSyncState("error", "NOT confirmed in Google Sheet. Saved on this device only.");
+          showToast("⚠️ Saved on this device but NOT confirmed in the Google Sheet. Please tell your admin.");
+        }
+        setTimeout(function () {
+          var url = getCurrentExecUrl();
+          var sep = url.indexOf("?") === -1 ? "?" : "&";
+          fetch(url + sep + "_ts=" + Date.now(), { method: "GET", redirect: "follow" })
+            .then(function (res) { return res.text(); })
+            .then(function (txt) {
+              var d = null;
+              try { d = JSON.parse(txt); } catch (e) { d = null; }
+              var ok = false;
+              if (d && d.ok && Array.isArray(d.logs)) {
+                var want = log.status === "in" ? "in" : "done";
+                for (var i = 0; i < d.logs.length; i++) {
+                  if (String(d.logs[i].id) === String(log.id)) {
+                    ok = String(d.logs[i].status || "done").toLowerCase() === want;
+                    break;
+                  }
+                }
+              }
+              if (ok) {
+                setSyncState("synced", "Confirmed in Google Sheet at " + new Date().toLocaleTimeString() + ".");
+              } else if (attempt < 2) {
+                verifySaved(log, attempt + 1);
+              } else {
+                warn();
+              }
+            })
+            .catch(function () {
+              if (attempt < 2) verifySaved(log, attempt + 1);
+              else warn();
+            });
+        }, attempt === 1 ? 5000 : 7000);
+      }
+
       function postToSheet(payloadObj, showFeedback, labelAction) {
         var url = getCurrentExecUrl();
         if (!url) {
@@ -2182,10 +2225,15 @@
             body: JSON.stringify(payloadObj || {})
           })
             .then(function () {
+              if (payloadObj && payloadObj.action === "save_log" && payloadObj.log) {
+                setSyncState("syncing", "Sent. Confirming with Google Sheet...");
+                verifySaved(payloadObj.log, 1);
+              } else {
               setSyncState(
                 "synced",
                 "Sent to Google Sheet at " + new Date().toLocaleTimeString() + " (" + LOGS.length + " log(s), " + STAFF.length + " staff)."
               );
+              }
               if (showFeedback) {
                 showToast("Synced with Google Sheet!");
               }
