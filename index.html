@@ -2149,8 +2149,32 @@
       /* =================================================================== */
       /* TAB SWITCHING                                                       */
       /* =================================================================== */
+      /* ADMIN MODE: Backups & Sheet tab is hidden from employees.
+         Admin opens the link once with ?admin=1 (stays on for that browser).
+         Use ?admin=0 to turn it off again. */
+      var IS_ADMIN = false;
+      function detectAdmin() {
+        var flag = false;
+        try {
+          var q = (window.location.search || "") + (window.location.hash || "");
+          if (/[?&#]admin=1/.test(q) || /#admin$/.test(q)) {
+            SafeStorage.set("energy360_eod_admin_v1", "1");
+          } else if (/[?&#]admin=0/.test(q)) {
+            SafeStorage.set("energy360_eod_admin_v1", "0");
+          }
+          flag = SafeStorage.get("energy360_eod_admin_v1") === "1";
+        } catch (e) { flag = false; }
+        IS_ADMIN = flag;
+        var btn = byId("tab-btn-backups");
+        var panel = byId("panel-backups");
+        if (!IS_ADMIN) {
+          if (btn) btn.style.display = "none";
+          if (panel) panel.style.display = "none";
+        }
+      }
+
       function switchTab(tabName) {
-        var target = (tabName === "tracker" || tabName === "backups") ? tabName : "form";
+        var target = (tabName === "tracker" || (tabName === "backups" && IS_ADMIN)) ? tabName : "form";
         State.activeTab = target;
 
         var tabs = ["form", "tracker", "backups"];
@@ -3444,6 +3468,7 @@
         bindEvents();
         updateShiftDuration();
         setSyncState("local", State.syncMessage);
+        detectAdmin();
         switchTab("form");
 
         /* Pull existing logs/staff from your pre-configured /exec Web App */
