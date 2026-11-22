@@ -2527,7 +2527,7 @@
             var when = (open.date === todayISO()) ? "" : (" on " + prettyDate(open.date));
             banner.innerHTML =
               "🟢 <strong>Punched in at " + escHtml(prettyTime12(open.loginTime)) + escHtml(when) + "</strong>" +
-              (open.loginLocation ? " • 📍 " + escHtml(open.loginLocation) : "") +
+              (placeText(open.loginAddress, open.loginLocation) ? "<br>📍 " + escHtml(placeText(open.loginAddress, open.loginLocation)) : "") +
               "<br>Fill in your work details below and submit your EOD report when your day ends.";
             banner.classList.remove("hidden");
           } else {
@@ -2559,6 +2559,35 @@
       /* ---------- GPS helpers ---------- */
       function gpsToStr(g) {
         return g ? (g.lat + "," + g.lng + "," + g.acc) : "";
+      }
+
+      /* Human-readable place: street address if we have it, else the typed note (ignoring the placeholder text) */
+      function placeText(address, note) {
+        var a = String(address || "").trim();
+        if (a) return a;
+        var n = String(note || "").trim();
+        return (n && n.toLowerCase() !== "gps location") ? n : "";
+      }
+
+      function locationBlockHtml(item) {
+        var inText = placeText(item.loginAddress, item.loginLocation);
+        var outText = placeText(item.logoutAddress, "");
+        var note = String(item.loginLocation || "").trim();
+        var showNote = Boolean(item.loginAddress && note && note.toLowerCase() !== "gps location");
+        if (!inText && !outText) return "";
+
+        function line(icon, label, text, gps) {
+          var url = IS_ADMIN ? mapUrl(gps) : "";
+          var body = escHtml(text);
+          if (url) body = '<a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:underline;">' + body + " ↗</a>";
+          return '<p class="log-block-body" style="margin:0 0 4px 0;">' + icon + " <strong>" + label + ":</strong> " + body + "</p>";
+        }
+
+        var html = '<div class="log-block"><div class="log-block-title">Location</div>';
+        if (inText) html += line("🟢", "Login", inText, item.loginGps);
+        if (outText) html += line("🔴", "Logout", outText, item.logoutGps);
+        if (showNote) html += '<p class="log-block-body" style="margin:0; opacity:.8;">Note: ' + escHtml(note) + "</p>";
+        return html + "</div>";
       }
 
       function mapUrl(gpsStr) {
@@ -3262,14 +3291,13 @@
                   '<span class="log-name">' + escHtml(item.employeeName) + "</span>" +
                   '<span class="tag-pill">' + escHtml(prettyDate(item.date)) + "</span>" +
                   '<span class="tag-pill shift">⏱️ ' + escHtml(shift) + "</span>" +
-                  (item.loginLocation ? '<span class="tag-pill">📍 ' + escHtml(item.loginLocation) + "</span>" : "") +
-                  (IS_ADMIN && mapUrl(item.loginGps) ? '<a class="tag-pill" style="text-decoration:none; white-space:normal; text-align:left;" href="' + escHtml(mapUrl(item.loginGps)) + '" target="_blank" rel="noopener noreferrer">🗺️ In: ' + escHtml(item.loginAddress || "View on map") + '</a>' : "") +
-                  (IS_ADMIN && mapUrl(item.logoutGps) ? '<a class="tag-pill" style="text-decoration:none; white-space:normal; text-align:left;" href="' + escHtml(mapUrl(item.logoutGps)) + '" target="_blank" rel="noopener noreferrer">🗺️ Out: ' + escHtml(item.logoutAddress || "View on map") + '</a>' : "") +
                 "</div>" +
                 '<span class="status-tag ' + (isOpen ? "ok" : (flagged ? "warn" : "ok")) + '">' +
                   (isOpen ? "🟢 Punched In • EOD Pending" : (flagged ? "⚠️ Needs Support" : "✅ Smooth Day")) +
                 "</span>" +
               "</div>" +
+
+              locationBlockHtml(item) +
 
               (isOpen
                 ? '<div class="log-block"><p class="log-block-body">Punched in. EOD work details not submitted yet.</p></div>'
@@ -3326,16 +3354,14 @@
         for (var j = 0; j < list.length; j++) {
           var l = list[j];
           if (l.status === "in") {
-            lines.push((j + 1) + ". *" + l.employeeName + "* (Punched in " + prettyTime12(l.loginTime) + (l.loginLocation ? ", 📍 " + l.loginLocation : "") + ") - EOD pending");
+            lines.push((j + 1) + ". *" + l.employeeName + "* (Punched in " + prettyTime12(l.loginTime) + (placeText(l.loginAddress, l.loginLocation) ? ", 📍 " + placeText(l.loginAddress, l.loginLocation) : "") + ") - EOD pending");
             lines.push("");
             continue;
           }
           var dur = l.durationText || formatDuration(l.durationMinutes || calcShiftMins(l.loginTime, l.logoutTime));
-          lines.push((j + 1) + ". *" + l.employeeName + "* (" + prettyTime12(l.loginTime) + "–" + prettyTime12(l.logoutTime) + ", " + dur + (l.loginLocation ? ", 📍 " + l.loginLocation : "") + ")");
-          if (IS_ADMIN && (mapUrl(l.loginGps) || mapUrl(l.logoutGps))) {
-            if (mapUrl(l.loginGps)) lines.push("   • 📍 In: " + (l.loginAddress || "see map") + " " + mapUrl(l.loginGps));
-            if (mapUrl(l.logoutGps)) lines.push("   • 📍 Out: " + (l.logoutAddress || "see map") + " " + mapUrl(l.logoutGps));
-          }
+          lines.push((j + 1) + ". *" + l.employeeName + "* (" + prettyTime12(l.loginTime) + "–" + prettyTime12(l.logoutTime) + ", " + dur + ")");
+          if (placeText(l.loginAddress, l.loginLocation)) lines.push("   • 📍 Login: " + placeText(l.loginAddress, l.loginLocation) + (IS_ADMIN && mapUrl(l.loginGps) ? " " + mapUrl(l.loginGps) : ""));
+          if (placeText(l.logoutAddress, "")) lines.push("   • 📍 Logout: " + placeText(l.logoutAddress, "") + (IS_ADMIN && mapUrl(l.logoutGps) ? " " + mapUrl(l.logoutGps) : ""));
           lines.push("   • Done: " + singleLine(l.activities));
           if (l.issueDetails && l.issueDetails.trim()) {
             lines.push("   • ⚠️ Issue/Support: " + singleLine(l.issueDetails));
@@ -3430,9 +3456,9 @@
             l.issueDetails || "",
             l.tomorrowPlan || "",
             l.status === "in" ? "Punched In (EOD pending)" : "Completed",
-            IS_ADMIN ? (l.loginAddress || "") : "",
+            l.loginAddress || "",
             IS_ADMIN ? mapUrl(l.loginGps) : "",
-            IS_ADMIN ? (l.logoutAddress || "") : "",
+            l.logoutAddress || "",
             IS_ADMIN ? mapUrl(l.logoutGps) : ""
           ].map(cell).join(","));
         }
