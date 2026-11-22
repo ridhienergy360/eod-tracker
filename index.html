@@ -1414,6 +1414,11 @@
 
           <div id="eod-name-chips" class="chips-row" aria-label="Quick tap staff names"></div>
 
+          <div style="margin-top:12px;">
+            <label for="eod-pin" class="sub-label">Your PIN <span class="req-star">*</span></label>
+            <input type="password" id="eod-pin" class="input-ctrl" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN given to you by your admin" />
+          </div>
+
           <div id="eod-empty-roster-note" class="empty-roster-note hidden">
             Staff roster is currently empty. Enter your full name below to submit right away (or add team members in <strong>Manager Tracker</strong>).
           </div>
@@ -1586,6 +1591,11 @@
         <div class="add-staff-row">
           <input type="text" id="new-staff-input" class="input-ctrl" placeholder="Enter employee name..." />
           <button type="button" id="btn-add-staff" class="btn btn-dark" style="white-space:nowrap;">+ Add Staff</button>
+        </div>
+
+        <div id="admin-pin-tools" style="display:none; margin:0 0 14px 0;">
+          <button type="button" id="btn-gen-pins" class="btn btn-outline" style="min-height:40px; padding:6px 12px; font-size:13px;">🔑 Generate PINs for staff without one</button>
+          <p class="card-subtitle" style="margin:6px 0 0 0;">Employees need a PIN to punch in or submit an EOD. PINs are stored scrambled in the sheet, so you see them only once after generating. Use "Set PIN" next to a name to reset one.</p>
         </div>
 
         <div id="mgr-roster-list" class="roster-grid"></div>
@@ -1819,6 +1829,8 @@
         toastTimer: null,
         manualMode: false,
         gpsBusy: false,
+        pinSet: {},
+        sessionPin: null,
         lastFormMode: "",
         logoutPrefillFor: ""
       };
@@ -2096,6 +2108,11 @@
                 throw new Error("Sheet response error: " + detail);
               }
 
+              State.pinSet = {};
+              if (Array.isArray(data.pins)) {
+                for (var pi = 0; pi < data.pins.length; pi++) State.pinSet[String(data.pins[pi]).trim().toLowerCase()] = true;
+              }
+
               if (!data.version && IS_ADMIN) {
                 showToast("⚠️ Your Google Apps Script is an OLD version. Redeploy it as a New version.");
               }
@@ -2126,7 +2143,10 @@
               LOGS = mergedLogs;
               persistLocalLogs();
               for (var rs = 0; rs < resendLogs.length; rs++) {
-                postToSheet({ action: "save_log", log: toSheetLog(resendLogs[rs]) }, false, "retry");
+                var resendPin = pinForName(resendLogs[rs].employeeName);
+                if (resendPin) {
+                  postToSheet({ action: "save_log", log: toSheetLog(resendLogs[rs]), pin: resendPin }, false, "retry");
+                }
               }
 
               /* Update staff if returned */
@@ -2214,6 +2234,10 @@
           return;
         }
 
+        if (payloadObj && (payloadObj.action === "sync_all" || payloadObj.action === "set_pins")) {
+          payloadObj.adminCode = getAdminCode();
+        }
+
         setSyncState("syncing", "Sending " + (labelAction || "update") + " to Google Sheet...");
 
         try {
@@ -2261,34 +2285,192 @@
          Admin opens the link once with ?admin=1 (stays on for that browser).
          Use ?admin=0 to turn it off again. */
       var IS_ADMIN = false;
-      function detectAdmin() {
-        var flag = false;
+      var ADMIN_FLAG_KEY = "energy360_eod_admin_v1";
+      var ADMIN_CODE_KEY = "energy360_eod_admin_code_v1";
+
+      function getAdminCode() {
+        return SafeStorage.get(ADMIN_CODE_KEY) || "";
+      }
+
+      /* Generic GET against the Apps Script (returns parsed JSON or null) */
+      function execGet(params, cb) {
+        var done = false;
+        function fin(v) { if (done) return; done = true; cb(v); }
+        var timer = setTimeout(function () { fin(null); }, 15000);
         try {
-          var q = (window.location.search || "") + (window.location.hash || "");
-          if (/[?&#]admin=1/.test(q) || /#admin$/.test(q)) {
-            SafeStorage.set("energy360_eod_admin_v1", "1");
-          } else if (/[?&#]admin=0/.test(q)) {
-            SafeStorage.set("energy360_eod_admin_v1", "0");
+          var url = getCurrentExecUrl();
+          var sep = url.indexOf("?") === -1 ? "?" : "&";
+          var qs = [];
+          for (var k in params) {
+            if (Object.prototype.hasOwnProperty.call(params, k)) {
+              qs.push(encodeURIComponent(k) + "=" + encodeURIComponent(params[k]));
+            }
           }
-          flag = SafeStorage.get("energy360_eod_admin_v1") === "1";
-        } catch (e) { flag = false; }
-        IS_ADMIN = flag;
-        var btn = byId("tab-btn-backups");
-        var panel = byId("panel-backups");
-        if (!IS_ADMIN) {
-          if (btn) btn.style.display = "none";
-          if (panel) panel.style.display = "none";
-          var sheetLink = byId("header-sheet-link");
-          var copyLink = byId("header-copy-sheet-btn");
-          if (sheetLink) sheetLink.style.display = "none";
-          var addRow = document.querySelector(".add-staff-row");
-          if (addRow) addRow.style.display = "none";
-          var clearBar = byId("clear-logs-confirm-bar");
-          if (clearBar) clearBar.style.display = "none";
-          var clearBtnEl = byId("btn-ask-clear-logs");
-          if (clearBtnEl) clearBtnEl.style.display = "none";
-          if (copyLink) copyLink.style.display = "none";
+          qs.push("_ts=" + Date.now());
+          fetch(url + sep + qs.join("&"), { method: "GET", redirect: "follow" })
+            .then(function (res) { return res.text(); })
+            .then(function (txt) {
+              clearTimeout(timer);
+              var d = null;
+              try { d = JSON.parse(txt); } catch (e) { d = null; }
+              fin(d);
+            })
+            .catch(function () { clearTimeout(timer); fin(null); });
+        } catch (e) {
+          clearTimeout(timer);
+          fin(null);
         }
+      }
+
+      function applyAdminUI() {
+        var show = IS_ADMIN;
+        function setDisp(el, visible) { if (el) el.style.display = visible ? "" : "none"; }
+        setDisp(byId("tab-btn-backups"), show);
+        setDisp(byId("panel-backups"), show);
+        setDisp(byId("header-sheet-link"), show);
+        setDisp(byId("header-copy-sheet-btn"), show);
+        setDisp(document.querySelector(".add-staff-row"), show);
+        setDisp(byId("clear-logs-confirm-bar"), show);
+        setDisp(byId("btn-ask-clear-logs"), show);
+        setDisp(byId("admin-pin-tools"), show);
+      }
+
+      /* Admin mode needs the admin code (checked by your Google script), so ?admin=1 alone is not enough. */
+      function detectAdmin() {
+        var q = "";
+        try { q = (window.location.search || "") + (window.location.hash || ""); } catch (e) { q = ""; }
+
+        if (/[?&#]admin=0/.test(q)) {
+          SafeStorage.set(ADMIN_FLAG_KEY, "0");
+          SafeStorage.set(ADMIN_CODE_KEY, "");
+          IS_ADMIN = false;
+          applyAdminUI();
+          return;
+        }
+
+        var wants = /[?&#]admin=1/.test(q) || /#admin$/.test(q) || SafeStorage.get(ADMIN_FLAG_KEY) === "1";
+        var code = getAdminCode();
+
+        if (!wants) {
+          IS_ADMIN = false;
+          applyAdminUI();
+          return;
+        }
+        if (!code) {
+          var typed = "";
+          try { typed = window.prompt("Enter the admin code:") || ""; } catch (e) { typed = ""; }
+          code = typed.trim();
+          if (!code) {
+            IS_ADMIN = false;
+            applyAdminUI();
+            return;
+          }
+        }
+
+        /* Show admin screens straight away only if this device was verified before; confirm with the script either way */
+        IS_ADMIN = (SafeStorage.get(ADMIN_FLAG_KEY) === "1" && !!getAdminCode());
+        applyAdminUI();
+
+        execGet({ action: "verifyAdmin", code: code }, function (d) {
+          if (d && d.ok && d.admin === true) {
+            SafeStorage.set(ADMIN_FLAG_KEY, "1");
+            SafeStorage.set(ADMIN_CODE_KEY, code);
+            IS_ADMIN = true;
+          } else {
+            SafeStorage.set(ADMIN_FLAG_KEY, "0");
+            SafeStorage.set(ADMIN_CODE_KEY, "");
+            IS_ADMIN = false;
+            var why = (d && d.message) ? d.message : "Could not reach the Google script.";
+            showToast("Admin mode not enabled: " + why);
+          }
+          applyAdminUI();
+          renderAll();
+        });
+      }
+
+      /* ---------- Employee PIN ---------- */
+      function verifyPin(name, pin, cb) {
+        execGet({ action: "verifyPin", name: name, pin: pin }, function (d) {
+          if (!d || !d.ok || typeof d.valid === "undefined") {
+            cb(false, "Could not check your PIN. Check your internet, or ask your admin to update the Google script.");
+            return;
+          }
+          cb(d.valid === true, d.valid === true ? "" : (d.message || "Incorrect PIN."));
+        });
+      }
+
+      function pinForName(name) {
+        var sp = State.sessionPin;
+        if (sp && String(sp.name).trim().toLowerCase() === String(name).trim().toLowerCase()) return sp.pin;
+        return "";
+      }
+
+      function randomPin() {
+        var a = new Uint32Array(1);
+        (window.crypto || window.msCrypto).getRandomValues(a);
+        return String(1000 + (a[0] % 9000));
+      }
+
+      /* Save PINs (admin only), then prove the LAST one really works before reporting success */
+      function savePins(items, cb) {
+        var code = getAdminCode();
+        if (!IS_ADMIN || !code) { cb(false); return; }
+        postToSheet({ action: "set_pins", items: items }, false, "PINs");
+        var last = items[items.length - 1];
+        setTimeout(function () {
+          execGet({ action: "verifyPin", name: last.name, pin: last.pin }, function (d) {
+            var ok = !!(d && d.ok && d.valid === true);
+            if (ok) {
+              for (var i = 0; i < items.length; i++) State.pinSet[items[i].name.trim().toLowerCase()] = true;
+              renderAll();
+            }
+            cb(ok);
+          });
+        }, 4000);
+      }
+
+      function setPinFor(name) {
+        if (!IS_ADMIN) return;
+        var v = "";
+        try { v = window.prompt("Set a PIN (4 to 6 digits) for " + name + ":") || ""; } catch (e) { v = ""; }
+        v = v.trim();
+        if (!v) return;
+        if (!/^\d{4,6}$/.test(v)) { showToast("PIN must be 4 to 6 digits."); return; }
+        showToast("Saving PIN...");
+        savePins([{ name: name, pin: v }], function (ok) {
+          showToast(ok ? ('PIN saved for "' + name + '".') : "PIN NOT saved. Check the admin code and that the Google script is the latest version.");
+        });
+      }
+
+      function generateMissingPins() {
+        if (!IS_ADMIN) return;
+        var missing = [];
+        for (var i = 0; i < STAFF.length; i++) {
+          if (!State.pinSet[STAFF[i].trim().toLowerCase()]) missing.push(STAFF[i]);
+        }
+        if (missing.length === 0) { showToast("Everyone already has a PIN."); return; }
+        var used = {};
+        var items = [];
+        for (var m = 0; m < missing.length; m++) {
+          var p = randomPin();
+          while (used[p]) p = randomPin();
+          used[p] = true;
+          items.push({ name: missing[m], pin: p });
+        }
+        showToast("Generating " + items.length + " PIN(s)...");
+        savePins(items, function (ok) {
+          if (!ok) {
+            showToast("PINs NOT saved. Check the admin code and that the Google script is the latest version.");
+            return;
+          }
+          var lines = [];
+          for (var j = 0; j < items.length; j++) lines.push(items[j].name + ": " + items[j].pin);
+          openCopyModal(
+            "Employee PINs",
+            "Share each PIN privately with that employee. These are shown only once.",
+            lines.join("\n")
+          );
+        });
       }
 
       function switchTab(tabName) {
@@ -2606,7 +2788,7 @@
         if (!sp) return;
         if (busy) {
           if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", sp.textContent);
-          sp.textContent = "📡 Getting your location…";
+          sp.textContent = "⏳ Checking PIN & location…";
         } else if (btn.getAttribute("data-label")) {
           sp.textContent = btn.getAttribute("data-label");
           btn.removeAttribute("data-label");
@@ -2703,19 +2885,35 @@
         }
 
         if (gps === undefined) {
+          var pinEl = byId("eod-pin");
+          var pinVal = pinEl ? pinEl.value.trim() : "";
+          if (!/^\d{4,6}$/.test(pinVal)) {
+            showFormError("Please enter your PIN (4 to 6 digits).", pinEl);
+            return;
+          }
           State.gpsBusy = true;
           setGpsBusy(true);
-          getGps(function (g) {
-            if (!g) {
+          verifyPin(employeeName, pinVal, function (pinOk, pinMsg) {
+            if (!pinOk) {
               State.gpsBusy = false;
               setGpsBusy(false);
-              showFormError(GPS_REQUIRED_MSG, null);
+              if (pinEl) pinEl.value = "";
+              showFormError(pinMsg, pinEl);
               return;
             }
-            reverseGeocode(g, function (a) {
-              State.gpsBusy = false;
-              setGpsBusy(false);
-              punchIn(g, a || "");
+            State.sessionPin = { name: employeeName, pin: pinVal };
+            getGps(function (g) {
+              if (!g) {
+                State.gpsBusy = false;
+                setGpsBusy(false);
+                showFormError(GPS_REQUIRED_MSG, null);
+                return;
+              }
+              reverseGeocode(g, function (a) {
+                State.gpsBusy = false;
+                setGpsBusy(false);
+                punchIn(g, a || "");
+              });
             });
           });
           return;
@@ -2756,7 +2954,9 @@
         State.lastStaff = employeeName;
         SafeStorage.set(KEYS.LAST_STAFF, employeeName);
 
-        postToSheet({ action: "save_log", log: toSheetLog(entry) }, false, "punch in");
+        postToSheet({ action: "save_log", log: toSheetLog(entry), pin: pinForName(employeeName) }, false, "punch in");
+        var pinClr = byId("eod-pin");
+        if (pinClr) pinClr.value = "";
 
         if (locEl) locEl.value = "";
         renderAll();
@@ -2908,7 +3108,7 @@
       function clearFormErrors() {
         var errBanner = byId("eod-error-banner");
         if (errBanner) errBanner.classList.add("hidden");
-        var ids = ["eod-staff-select", "eod-manual-name", "eod-login", "eod-login-location", "punch-location", "eod-logout", "eod-activities"];
+        var ids = ["eod-staff-select", "eod-manual-name", "eod-pin", "eod-login", "eod-login-location", "punch-location", "eod-logout", "eod-activities"];
         for (var i = 0; i < ids.length; i++) {
           var el = byId(ids[i]);
           if (el) el.classList.remove("has-error");
@@ -2984,19 +3184,35 @@
         }
 
         if (gps === undefined) {
+          var pinEl = byId("eod-pin");
+          var pinVal = pinEl ? pinEl.value.trim() : "";
+          if (!/^\d{4,6}$/.test(pinVal)) {
+            showFormError("Please enter your PIN (4 to 6 digits).", pinEl);
+            return;
+          }
           State.gpsBusy = true;
           setGpsBusy(true);
-          getGps(function (g) {
-            if (!g) {
+          verifyPin(employeeName, pinVal, function (pinOk, pinMsg) {
+            if (!pinOk) {
               State.gpsBusy = false;
               setGpsBusy(false);
-              showFormError(GPS_REQUIRED_MSG, null);
+              if (pinEl) pinEl.value = "";
+              showFormError(pinMsg, pinEl);
               return;
             }
-            reverseGeocode(g, function (a) {
-              State.gpsBusy = false;
-              setGpsBusy(false);
-              submitEodReport(g, a || "");
+            State.sessionPin = { name: employeeName, pin: pinVal };
+            getGps(function (g) {
+              if (!g) {
+                State.gpsBusy = false;
+                setGpsBusy(false);
+                showFormError(GPS_REQUIRED_MSG, null);
+                return;
+              }
+              reverseGeocode(g, function (a) {
+                State.gpsBusy = false;
+                setGpsBusy(false);
+                submitEodReport(g, a || "");
+              });
             });
           });
           return;
@@ -3062,7 +3278,9 @@
         State.lastStaff = employeeName;
         SafeStorage.set(KEYS.LAST_STAFF, employeeName);
 
-        postToSheet({ action: "save_log", log: toSheetLog(entry) }, false, "EOD report");
+        postToSheet({ action: "save_log", log: toSheetLog(entry), pin: pinForName(employeeName) }, false, "EOD report");
+        var pinClr2 = byId("eod-pin");
+        if (pinClr2) pinClr2.value = "";
 
         var sHead2 = byId("eod-success-heading");
         if (sHead2) sHead2.textContent = "✅ EOD Report Submitted!";
@@ -3237,7 +3455,14 @@
                       (punched ? "🟢 Punched In" : (done ? "✓ Submitted" : "• Pending")) +
                     "</span>" +
                   "</div>" +
-                  (IS_ADMIN ? '<button type="button" class="btn-remove" data-remove-staff="' + escHtml(name) + '">Remove</button>' : "") +
+                  (IS_ADMIN
+                    ? '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
+                        '<span class="status-pill-sm ' + (State.pinSet[name.trim().toLowerCase()] ? "done" : "pending") + '">' +
+                          (State.pinSet[name.trim().toLowerCase()] ? "🔑 PIN set" : "No PIN") + "</span>" +
+                        '<button type="button" class="preset-btn" data-set-pin="' + escHtml(name) + '">Set PIN</button>' +
+                        '<button type="button" class="btn-remove" data-remove-staff="' + escHtml(name) + '">Remove</button>' +
+                      "</div>"
+                    : "") +
                 "</div>";
             }
             rosterBox.innerHTML = rHtml;
@@ -3670,6 +3895,17 @@
         var btnSubmit = byId("btn-submit-eod");
         if (btnSubmit) btnSubmit.onclick = function () { submitEodReport(); };
 
+        var btnGenPins = byId("btn-gen-pins");
+        if (btnGenPins) btnGenPins.onclick = generateMissingPins;
+        var pinInput = byId("eod-pin");
+        if (pinInput) {
+          pinInput.oninput = function () {
+            pinInput.value = pinInput.value.replace(/[^0-9]/g, "");
+            pinInput.classList.remove("has-error");
+            clearFormErrors();
+          };
+        }
+
         var btnPunch = byId("btn-punch-in");
         if (btnPunch) btnPunch.onclick = function () { punchIn(); };
         var btnManualMode = byId("btn-manual-mode");
@@ -3971,6 +4207,12 @@
             SafeStorage.set(KEYS.LAST_STAFF, picked);
             clearFormErrors();
             renderFormTab();
+            return;
+          }
+
+          var pinNode = target.closest("[data-set-pin]");
+          if (pinNode) {
+            setPinFor(pinNode.getAttribute("data-set-pin"));
             return;
           }
 
