@@ -244,7 +244,8 @@
     /* Primary 3-Tab Navigation */
     .nav-tabs {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
       gap: 6px;
       background-color: var(--bg-muted);
       padding: 4px;
@@ -1248,6 +1249,17 @@
       justify-content: flex-end;
       gap: 8px;
     }
+      @media (max-width: 520px) {
+      .nav-tab-btn { font-size: 11.5px; padding: 8px 3px; }
+    }
+    .fw-item { border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: #fff; font-size: 13.5px; line-height: 1.45; }
+    .fw-item strong { font-weight: 700; }
+    .fw-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--bg-muted); margin-left: 6px; white-space: nowrap; }
+    .fw-chip.ok { background: #d1fae5; color: #065f46; }
+    .fw-chip.warn { background: #fee2e2; color: #991b1b; }
+    .fw-chip.wait { background: #fef3c7; color: #92400e; }
+    .fw-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) { .fw-row2 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -1344,6 +1356,9 @@
         <button type="button" id="tab-btn-tracker" class="nav-tab-btn" data-tab="tracker">
           <span>📊 Manager Tracker</span>
           <span id="header-today-badge" class="tab-badge">0</span>
+        </button>
+        <button type="button" id="tab-btn-field" class="nav-tab-btn" data-tab="field">
+          <span>🚗 Field &amp; Expenses</span>
         </button>
         <button type="button" id="tab-btn-backups" class="nav-tab-btn" data-tab="backups">
           <span>💾 Backups &amp; Sheet</span>
@@ -1634,6 +1649,151 @@
     </section>
 
     <!-- =================================================================== -->
+    <!-- TAB: FIELD WORK & EXPENSES (optional for office staff)              -->
+    <!-- =================================================================== -->
+    <section id="panel-field" class="tab-panel">
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Field Work &amp; Expenses</h2>
+            <p class="card-subtitle">Optional. For staff who visit sites or incur expenses. Office staff can skip this tab.</p>
+          </div>
+        </div>
+
+        <div id="fw-error" class="error-banner hidden" role="alert">
+          <span aria-hidden="true">⚠️</span>
+          <span id="fw-error-text"></span>
+        </div>
+        <div id="fw-msg" class="hidden" role="status" style="background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:14px; line-height:1.45;"></div>
+
+        <div class="fw-row2">
+          <div class="field-group">
+            <label for="fw-staff-select" class="field-label">Your Name <span class="req-star">*</span></label>
+            <select id="fw-staff-select" class="select-ctrl">
+              <option value="">-- Select Your Name --</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="fw-pin" class="field-label">Your PIN <span class="req-star">*</span></label>
+            <input type="password" id="fw-pin" class="input-ctrl" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN given by your admin" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">📍 Site Check-in</h2>
+            <p class="card-subtitle">Tap this when you reach a client or site. Your real GPS location and address are recorded. You can check in at several sites a day.</p>
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="fw-site" class="field-label">Site / client name <span class="req-star">*</span></label>
+          <input type="text" id="fw-site" class="input-ctrl" maxlength="120" list="fw-site-list" autocomplete="off" placeholder="e.g. ABC Pvt Ltd - Plant 2" />
+          <datalist id="fw-site-list"></datalist>
+        </div>
+        <div class="field-group">
+          <label for="fw-purpose" class="field-label">Purpose <span class="hint-pill">(optional)</span></label>
+          <input type="text" id="fw-purpose" class="input-ctrl" maxlength="200" autocomplete="off" placeholder="e.g. Installation check, client meeting" />
+        </div>
+        <button type="button" id="btn-fw-checkin" class="btn btn-submit">
+          <span>📍 Check in at this site</span>
+          <span class="lime-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">🧾 Add Expense</h2>
+            <p class="card-subtitle">Record any expense you paid today. Submit one entry per expense.</p>
+          </div>
+        </div>
+        <div class="fw-row2">
+          <div class="field-group">
+            <label for="fw-exp-cat" class="field-label">Category <span class="req-star">*</span></label>
+            <select id="fw-exp-cat" class="select-ctrl">
+              <option>Travel / Fuel</option>
+              <option>Food</option>
+              <option>Accommodation</option>
+              <option>Parking / Toll</option>
+              <option>Materials / Purchase</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="fw-exp-amt" class="field-label">Amount (₹) <span class="req-star">*</span></label>
+            <input type="number" id="fw-exp-amt" class="input-ctrl" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 450" />
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="fw-exp-desc" class="field-label">Description <span class="hint-pill">(required for "Other")</span></label>
+          <input type="text" id="fw-exp-desc" class="input-ctrl" maxlength="200" autocomplete="off" placeholder="e.g. Petrol for client visit, lunch with client" />
+        </div>
+        <div class="fw-row2">
+          <div class="field-group">
+            <label for="fw-exp-site" class="field-label">Site / client <span class="hint-pill">(optional)</span></label>
+            <input type="text" id="fw-exp-site" class="input-ctrl" maxlength="120" list="fw-site-list" autocomplete="off" placeholder="Which site was it for?" />
+          </div>
+          <div class="field-group">
+            <label for="fw-exp-date" class="field-label">Expense date</label>
+            <input type="date" id="fw-exp-date" class="input-ctrl" />
+          </div>
+        </div>
+        <button type="button" id="btn-fw-expense" class="btn btn-submit">
+          <span>Submit Expense</span>
+          <span class="lime-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">My entries today</h2>
+            <p class="card-subtitle">Entries submitted from this device for the name selected above.</p>
+          </div>
+        </div>
+        <div id="fw-my-list"></div>
+      </div>
+
+      <!-- ADMIN ONLY REPORT -->
+      <div id="fw-admin-report" style="display:none;">
+        <div class="card">
+          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+            <div>
+              <h2 class="card-title">🛡️ Admin: Site Visits &amp; Expenses</h2>
+              <p class="card-subtitle">Only you can see this. Expense status can be edited in the Google Sheet (Expenses tab, Status column).</p>
+            </div>
+          </div>
+          <div class="filters-row">
+            <input type="date" id="fw-from" class="input-ctrl" style="min-height:46px;" />
+            <input type="date" id="fw-to" class="input-ctrl" style="min-height:46px;" />
+            <select id="fw-emp-filter" class="select-ctrl"><option value="">All employees</option></select>
+            <button type="button" id="btn-fw-refresh" class="btn btn-outline">↻ Refresh</button>
+          </div>
+          <div class="kpi-grid" style="margin-top:12px;">
+            <div class="kpi-card"><div class="kpi-label">Site Check-ins</div><div id="fw-kpi-visits" class="kpi-number">0</div><div class="kpi-sub">In range</div></div>
+            <div class="kpi-card"><div class="kpi-label">Expenses Total</div><div id="fw-kpi-total" class="kpi-number">₹0</div><div id="fw-kpi-count" class="kpi-sub">0 entries</div></div>
+          </div>
+          <div id="fw-emp-totals" style="margin-top:12px; font-size:13.5px; line-height:1.6;"></div>
+          <div class="btn-group" style="margin-top:12px;">
+            <button type="button" id="btn-fw-export-visits" class="btn btn-dark">📥 Export Visits CSV</button>
+            <button type="button" id="btn-fw-export-exp" class="btn btn-dark">📥 Export Expenses CSV</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">Site check-ins</h2></div>
+          <div id="fw-visits-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">Expenses</h2></div>
+          <div id="fw-expenses-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
     <!-- TAB 3: BACKUPS & SHEET                                              -->
     <!-- =================================================================== -->
     <section id="panel-backups" class="tab-panel">
@@ -1774,7 +1934,8 @@
         STAFF: "energy360_eod_staff_v1",
         SHEET_URL: "energy360_eod_sheet_url_v2",
         LAST_STAFF: "energy360_eod_last_staff_v1",
-        WA_DISMISSED: "energy360_eod_wa_dismissed_v1"
+        WA_DISMISSED: "energy360_eod_wa_dismissed_v1",
+        FIELD: "energy360_eod_field_v1"
       };
 
       /* Safe storage with localStorage -> sessionStorage -> in-memory fallback */
@@ -1830,6 +1991,7 @@
         manualMode: false,
         gpsBusy: false,
         pinSet: {},
+        fwBusy: false,
         sessionPin: null,
         lastFormMode: "",
         logoutPrefillFor: ""
@@ -2333,6 +2495,7 @@
         setDisp(byId("clear-logs-confirm-bar"), show);
         setDisp(byId("btn-ask-clear-logs"), show);
         setDisp(byId("admin-pin-tools"), show);
+        setDisp(byId("fw-admin-report"), show);
       }
 
       /* Admin mode needs the admin code (checked by your Google script), so ?admin=1 alone is not enough. */
@@ -2474,10 +2637,10 @@
       }
 
       function switchTab(tabName) {
-        var target = (tabName === "tracker" || (tabName === "backups" && IS_ADMIN)) ? tabName : "form";
+        var target = (tabName === "tracker" || tabName === "field" || (tabName === "backups" && IS_ADMIN)) ? tabName : "form";
         State.activeTab = target;
 
-        var tabs = ["form", "tracker", "backups"];
+        var tabs = ["form", "tracker", "field", "backups"];
         for (var i = 0; i < tabs.length; i++) {
           var t = tabs[i];
           var panel = byId("panel-" + t);
@@ -2612,6 +2775,7 @@
         updateTodayBadge();
         renderFormTab();
         renderTrackerTab();
+        renderFieldTab();
         renderBackupsTab();
       }
 
@@ -2781,14 +2945,14 @@
         return "https://www.google.com/maps?q=" + la + "," + ln;
       }
 
-      function setBtnBusy(btn, busy) {
+      function setBtnBusy(btn, busy, label) {
         if (!btn) return;
         var sp = btn.querySelector("span");
         btn.disabled = !!busy;
         if (!sp) return;
         if (busy) {
           if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", sp.textContent);
-          sp.textContent = "⏳ Checking PIN & location…";
+          sp.textContent = label || "⏳ Checking PIN & location…";
         } else if (btn.getAttribute("data-label")) {
           sp.textContent = btn.getAttribute("data-label");
           btn.removeAttribute("data-label");
@@ -3367,6 +3531,518 @@
         });
       }
 
+      /* =================================================================== */
+      /* FIELD WORK: SITE CHECK-INS & EXPENSES                              */
+      /* =================================================================== */
+      var FIELD = { visits: [], expenses: [] };
+      var FIELD_REPORT = { visits: [], expenses: [], loaded: false, loading: false };
+
+      function loadField() {
+        try {
+          var raw = SafeStorage.get(KEYS.FIELD);
+          if (!raw) return;
+          var p = JSON.parse(raw);
+          if (p && Array.isArray(p.visits)) FIELD.visits = p.visits;
+          if (p && Array.isArray(p.expenses)) FIELD.expenses = p.expenses;
+        } catch (e) {
+          FIELD = { visits: [], expenses: [] };
+        }
+      }
+
+      function persistField() {
+        FIELD.visits = FIELD.visits.slice(0, 200);
+        FIELD.expenses = FIELD.expenses.slice(0, 200);
+        SafeStorage.set(KEYS.FIELD, JSON.stringify(FIELD));
+      }
+
+      function formatINR(n) {
+        var v = Number(n) || 0;
+        try {
+          return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch (e) {
+          return "₹" + v.toFixed(2);
+        }
+      }
+
+      function fwShowError(msg, el) {
+        var b = byId("fw-error");
+        var t = byId("fw-error-text");
+        var m = byId("fw-msg");
+        if (t) t.textContent = msg;
+        if (b) b.classList.remove("hidden");
+        if (m) m.classList.add("hidden");
+        if (el) {
+          el.classList.add("has-error");
+          try { el.focus(); } catch (e) {}
+          try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e2) {}
+        }
+      }
+
+      function fwShowMsg(html) {
+        var m = byId("fw-msg");
+        var b = byId("fw-error");
+        if (b) b.classList.add("hidden");
+        if (m) {
+          m.innerHTML = html;
+          m.classList.remove("hidden");
+          try { m.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+        }
+      }
+
+      function fwClearErrors() {
+        var b = byId("fw-error");
+        if (b) b.classList.add("hidden");
+        var ids = ["fw-staff-select", "fw-pin", "fw-site", "fw-exp-amt", "fw-exp-desc", "fw-exp-cat"];
+        for (var i = 0; i < ids.length; i++) {
+          var el = byId(ids[i]);
+          if (el) el.classList.remove("has-error");
+        }
+      }
+
+      function fwName() {
+        var s = byId("fw-staff-select");
+        return s ? s.value : "";
+      }
+
+      function fwRandId(prefix) {
+        return prefix + "-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+      }
+
+      /* Confirm with the sheet that the entry really arrived (saves are sent "no-cors", so errors are otherwise invisible) */
+      function confirmFieldSave(kind, item, attempt, okHtml) {
+        attempt = attempt || 1;
+        setTimeout(function () {
+          execGet({ action: "checkSaved", kind: kind, id: item.id }, function (d) {
+            if (d && d.ok && d.saved === true) {
+              item.status = "saved";
+              persistField();
+              renderFieldTab();
+              if (okHtml) fwShowMsg(okHtml);
+              return;
+            }
+            if (attempt < 3) {
+              confirmFieldSave(kind, item, attempt + 1, okHtml);
+              return;
+            }
+            item.status = "failed";
+            persistField();
+            renderFieldTab();
+            fwShowError("⚠️ Saved on this device but NOT confirmed in the Google Sheet. Check your internet, then tap Retry under \"My entries today\". If it keeps failing, tell your admin.");
+          });
+        }, attempt === 1 ? 3500 : 6000);
+      }
+
+      function visitPayload(v) {
+        return { id: v.id, date: v.date, employeeName: v.employeeName, time: v.time, site: v.site, purpose: v.purpose || "", gps: v.gps, address: v.address || "" };
+      }
+      function expensePayload(x) {
+        return { id: x.id, date: x.date, employeeName: x.employeeName, category: x.category, amount: x.amount, description: x.description || "", site: x.site || "" };
+      }
+
+      function fwCheckIn() {
+        if (State.fwBusy) return;
+        fwClearErrors();
+        var nameEl = byId("fw-staff-select");
+        var pinEl = byId("fw-pin");
+        var siteEl = byId("fw-site");
+        var purEl = byId("fw-purpose");
+        var btn = byId("btn-fw-checkin");
+        var name = fwName();
+        var site = normalizeSpaces(siteEl ? siteEl.value : "");
+        var purpose = normalizeSpaces(purEl ? purEl.value : "");
+        var pin = pinEl ? pinEl.value.trim() : "";
+
+        if (!name) { fwShowError("Please select your name.", nameEl); return; }
+        if (!site) { fwShowError("Please enter the site or client name.", siteEl); return; }
+        if (!/^\d{4,6}$/.test(pin)) { fwShowError("Please enter your PIN (4 to 6 digits).", pinEl); return; }
+
+        State.fwBusy = true;
+        setBtnBusy(btn, true, "⏳ Checking PIN & location…");
+        function done() { State.fwBusy = false; setBtnBusy(btn, false); }
+
+        verifyPin(name, pin, function (pinOk, pinMsg) {
+          if (!pinOk) {
+            done();
+            if (pinEl) pinEl.value = "";
+            fwShowError(pinMsg, pinEl);
+            return;
+          }
+          State.sessionPin = { name: name, pin: pin };
+          getGps(function (g) {
+            if (!g) {
+              done();
+              fwShowError("Location is required for a site check-in. Please allow location access (Phone Settings > Safari or Chrome > Location > Allow), go outside if you are indoors, then try again.", null);
+              return;
+            }
+            reverseGeocode(g, function (addr) {
+              var nowMs = Date.now();
+              var v = {
+                id: fwRandId("VIS"),
+                date: todayISO(),
+                employeeName: name,
+                time: nowHHMM(),
+                site: site,
+                purpose: purpose,
+                gps: gpsToStr(g),
+                address: addr || "",
+                status: "sending",
+                createdAtMs: nowMs
+              };
+              FIELD.visits.unshift(v);
+              persistField();
+              postToSheet({ action: "save_visit", visit: visitPayload(v), pin: pin }, false, "site check-in");
+              if (siteEl) siteEl.value = "";
+              if (purEl) purEl.value = "";
+              if (pinEl) pinEl.value = "";
+              done();
+              renderFieldTab();
+              var lowAcc = g.acc > 100 ? "<br>⚠️ Location accuracy is low (about " + g.acc + " m). Move to open sky for better accuracy next time." : "";
+              showToast("Checking in at " + site + "...");
+              confirmFieldSave("visit", v, 1,
+                "📍 <strong>Checked in at " + escHtml(site) + "</strong> • " + escHtml(prettyTime12(v.time)) +
+                "<br>" + escHtml(addr || "Location captured") + lowAcc);
+            });
+          });
+        });
+      }
+
+      function fwAddExpense() {
+        if (State.fwBusy) return;
+        fwClearErrors();
+        var nameEl = byId("fw-staff-select");
+        var pinEl = byId("fw-pin");
+        var catEl = byId("fw-exp-cat");
+        var amtEl = byId("fw-exp-amt");
+        var descEl = byId("fw-exp-desc");
+        var siteEl = byId("fw-exp-site");
+        var dateEl = byId("fw-exp-date");
+        var btn = byId("btn-fw-expense");
+
+        var name = fwName();
+        var cat = catEl ? catEl.value : "Other";
+        var amount = amtEl ? parseFloat(amtEl.value) : NaN;
+        var desc = normalizeSpaces(descEl ? descEl.value : "");
+        var site = normalizeSpaces(siteEl ? siteEl.value : "");
+        var date = (dateEl && dateEl.value) ? dateEl.value : todayISO();
+        var pin = pinEl ? pinEl.value.trim() : "";
+
+        if (!name) { fwShowError("Please select your name.", nameEl); return; }
+        if (!isFinite(amount) || amount <= 0) { fwShowError("Please enter a valid amount greater than 0.", amtEl); return; }
+        if (amount > 1000000) { fwShowError("Amount looks too large. Please check it.", amtEl); return; }
+        if (cat === "Other" && !desc) { fwShowError('Please describe the expense (required for "Other").', descEl); return; }
+        if (date > todayISO()) { fwShowError("Expense date cannot be in the future.", dateEl); return; }
+        if (!/^\d{4,6}$/.test(pin)) { fwShowError("Please enter your PIN (4 to 6 digits).", pinEl); return; }
+        amount = Math.round(amount * 100) / 100;
+
+        State.fwBusy = true;
+        setBtnBusy(btn, true, "⏳ Checking PIN…");
+        function done() { State.fwBusy = false; setBtnBusy(btn, false); }
+
+        verifyPin(name, pin, function (pinOk, pinMsg) {
+          if (!pinOk) {
+            done();
+            if (pinEl) pinEl.value = "";
+            fwShowError(pinMsg, pinEl);
+            return;
+          }
+          State.sessionPin = { name: name, pin: pin };
+          var x = {
+            id: fwRandId("EXP"),
+            date: date,
+            employeeName: name,
+            category: cat,
+            amount: amount,
+            description: desc,
+            site: site,
+            status: "sending",
+            createdAtMs: Date.now()
+          };
+          FIELD.expenses.unshift(x);
+          persistField();
+          postToSheet({ action: "save_expense", expense: expensePayload(x), pin: pin }, false, "expense");
+          if (amtEl) amtEl.value = "";
+          if (descEl) descEl.value = "";
+          if (siteEl) siteEl.value = "";
+          if (pinEl) pinEl.value = "";
+          done();
+          renderFieldTab();
+          showToast("Saving expense...");
+          confirmFieldSave("expense", x, 1,
+            "🧾 <strong>Expense saved:</strong> " + escHtml(cat) + " • " + escHtml(formatINR(amount)) + (desc ? "<br>" + escHtml(desc) : ""));
+        });
+      }
+
+      function fwRetry(kind, id) {
+        if (State.fwBusy) return;
+        fwClearErrors();
+        var list = kind === "visit" ? FIELD.visits : FIELD.expenses;
+        var item = null;
+        for (var i = 0; i < list.length; i++) { if (list[i].id === id) { item = list[i]; break; } }
+        if (!item) return;
+        var pinEl = byId("fw-pin");
+        var pin = pinEl ? pinEl.value.trim() : "";
+        if (!/^\d{4,6}$/.test(pin)) { fwShowError("Enter your PIN above, then tap Retry again.", pinEl); return; }
+        State.fwBusy = true;
+        verifyPin(item.employeeName, pin, function (ok, msg) {
+          State.fwBusy = false;
+          if (!ok) {
+            if (pinEl) pinEl.value = "";
+            fwShowError(msg, pinEl);
+            return;
+          }
+          State.sessionPin = { name: item.employeeName, pin: pin };
+          item.status = "sending";
+          persistField();
+          if (kind === "visit") postToSheet({ action: "save_visit", visit: visitPayload(item), pin: pin }, false, "site check-in retry");
+          else postToSheet({ action: "save_expense", expense: expensePayload(item), pin: pin }, false, "expense retry");
+          if (pinEl) pinEl.value = "";
+          renderFieldTab();
+          confirmFieldSave(kind, item, 1, "✅ Saved to the Google Sheet.");
+        });
+      }
+
+      function statusChip(item) {
+        if (item.status === "saved") return '<span class="fw-chip ok">✓ Saved</span>';
+        if (item.status === "failed") return '<span class="fw-chip warn">⚠️ Not saved</span> <button type="button" class="preset-btn" data-fw-retry="' + escHtml(item.id) + '" data-fw-kind="' + (String(item.id).indexOf("VIS") === 0 ? "visit" : "expense") + '">Retry</button>';
+        return '<span class="fw-chip wait">⏳ Sending…</span>';
+      }
+
+      function renderFieldTab() {
+        var sel = byId("fw-staff-select");
+        if (!sel) return;
+
+        /* name dropdown */
+        var prev = sel.value;
+        var opts = '<option value="">-- Select Your Name --</option>';
+        for (var i = 0; i < STAFF.length; i++) {
+          opts += '<option value="' + escHtml(STAFF[i]) + '">' + escHtml(STAFF[i]) + "</option>";
+        }
+        if (sel.getAttribute("data-sig") !== opts) {
+          sel.innerHTML = opts;
+          sel.setAttribute("data-sig", opts);
+          if (prev && STAFF.indexOf(prev) !== -1) sel.value = prev;
+          else if (State.lastStaff && STAFF.indexOf(State.lastStaff) !== -1) sel.value = State.lastStaff;
+        }
+
+        var dEl = byId("fw-exp-date");
+        if (dEl && !dEl.value) dEl.value = todayISO();
+
+        /* site suggestions from this device */
+        var dl = byId("fw-site-list");
+        if (dl) {
+          var seen = {};
+          var h = "";
+          for (var v = 0; v < FIELD.visits.length && v < 60; v++) {
+            var sn = FIELD.visits[v].site;
+            if (sn && !seen[sn.toLowerCase()]) { seen[sn.toLowerCase()] = true; h += '<option value="' + escHtml(sn) + '"></option>'; }
+          }
+          dl.innerHTML = h;
+        }
+
+        /* my entries today */
+        var box = byId("fw-my-list");
+        if (box) {
+          var me = sel.value;
+          var today = todayISO();
+          var html = "";
+          var total = 0;
+          if (!me) {
+            html = '<p class="card-subtitle" style="margin:0;">Select your name to see today\'s entries from this device.</p>';
+          } else {
+            var mv = FIELD.visits.filter(function (x) { return x.employeeName === me && x.date === today; });
+            var mx = FIELD.expenses.filter(function (x) { return x.employeeName === me && x.date === today; });
+            for (var a = 0; a < mv.length; a++) {
+              html += '<div class="fw-item">📍 <strong>' + escHtml(mv[a].site) + "</strong> • " + escHtml(prettyTime12(mv[a].time)) +
+                (mv[a].address ? "<br>" + escHtml(mv[a].address) : "") + "<br>" + statusChip(mv[a]) + "</div>";
+            }
+            for (var b = 0; b < mx.length; b++) {
+              total += Number(mx[b].amount) || 0;
+              html += '<div class="fw-item">🧾 <strong>' + escHtml(mx[b].category) + "</strong> • " + escHtml(formatINR(mx[b].amount)) +
+                (mx[b].description ? "<br>" + escHtml(mx[b].description) : "") + (mx[b].site ? " (" + escHtml(mx[b].site) + ")" : "") +
+                "<br>" + statusChip(mx[b]) + "</div>";
+            }
+            if (!html) html = '<p class="card-subtitle" style="margin:0;">Nothing submitted from this device today.</p>';
+            else if (mx.length) html += '<p style="margin:6px 0 0 0; font-weight:700;">Today\'s expenses: ' + escHtml(formatINR(total)) + "</p>";
+          }
+          box.innerHTML = html;
+        }
+
+        if (IS_ADMIN && State.activeTab === "field" && !FIELD_REPORT.loaded && !FIELD_REPORT.loading) loadFieldReport();
+        if (IS_ADMIN) renderFieldReport();
+      }
+
+      /* ---------- Admin report ---------- */
+      function loadFieldReport() {
+        if (!IS_ADMIN || FIELD_REPORT.loading) return;
+        FIELD_REPORT.loading = true;
+        execGet({ action: "fieldData", code: getAdminCode() }, function (d) {
+          FIELD_REPORT.loading = false;
+          if (!d || !d.ok) {
+            showToast("Could not load the field report" + (d && d.error ? ": " + d.error : ". Is the Google script the latest version?"));
+            return;
+          }
+          FIELD_REPORT.visits = Array.isArray(d.visits) ? d.visits : [];
+          FIELD_REPORT.expenses = Array.isArray(d.expenses) ? d.expenses : [];
+          FIELD_REPORT.loaded = true;
+          renderFieldReport();
+        });
+      }
+
+      function reportRange() {
+        var f = byId("fw-from");
+        var t = byId("fw-to");
+        var e = byId("fw-emp-filter");
+        return {
+          from: (f && f.value) ? f.value : "",
+          to: (t && t.value) ? t.value : "",
+          emp: e ? e.value : ""
+        };
+      }
+
+      function inRange(item, r) {
+        if (r.from && item.date < r.from) return false;
+        if (r.to && item.date > r.to) return false;
+        if (r.emp && String(item.name).trim().toLowerCase() !== r.emp.trim().toLowerCase()) return false;
+        return true;
+      }
+
+      function serverClock(iso) {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "";
+        return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+      }
+
+      function clockDiffMin(v) {
+        /* minutes between phone-reported time and Google's server time (flags a wrong / changed phone clock) */
+        var d = new Date(v.serverTime);
+        if (isNaN(d.getTime()) || !v.date || !v.time) return 0;
+        var p = String(v.time).split(":");
+        var phone = new Date(v.date + "T" + pad2(Number(p[0])) + ":" + pad2(Number(p[1])) + ":00");
+        if (isNaN(phone.getTime())) return 0;
+        return Math.round(Math.abs(d.getTime() - phone.getTime()) / 60000);
+      }
+
+      function renderFieldReport() {
+        var visitsBox = byId("fw-visits-list");
+        var expBox = byId("fw-expenses-list");
+        if (!visitsBox || !expBox) return;
+
+        var fEl = byId("fw-from");
+        var tEl = byId("fw-to");
+        if (fEl && !fEl.value && !fEl.getAttribute("data-init")) { fEl.value = todayISO(); fEl.setAttribute("data-init", "1"); }
+        if (tEl && !tEl.value && !tEl.getAttribute("data-init")) { tEl.value = todayISO(); tEl.setAttribute("data-init", "1"); }
+
+        /* employee filter options */
+        var eSel = byId("fw-emp-filter");
+        if (eSel) {
+          var cur = eSel.value;
+          var o = '<option value="">All employees</option>';
+          for (var i = 0; i < STAFF.length; i++) o += '<option value="' + escHtml(STAFF[i]) + '">' + escHtml(STAFF[i]) + "</option>";
+          if (eSel.getAttribute("data-sig") !== o) {
+            eSel.innerHTML = o;
+            eSel.setAttribute("data-sig", o);
+            eSel.value = cur;
+          }
+        }
+
+        if (!FIELD_REPORT.loaded) {
+          visitsBox.innerHTML = '<p class="card-subtitle" style="margin:0;">' + (FIELD_REPORT.loading ? "Loading…" : "Tap Refresh to load.") + "</p>";
+          expBox.innerHTML = "";
+          return;
+        }
+
+        var r = reportRange();
+        var visits = FIELD_REPORT.visits.filter(function (x) { return inRange(x, r); });
+        var exps = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); });
+        visits.sort(function (a, b) { return String(b.serverTime || b.date).localeCompare(String(a.serverTime || a.date)); });
+        exps.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(b.serverTime).localeCompare(String(a.serverTime)); });
+
+        var total = 0;
+        var per = {};
+        for (var e1 = 0; e1 < exps.length; e1++) {
+          total += exps[e1].amount;
+          var k = exps[e1].name;
+          per[k] = per[k] || { visits: 0, exp: 0, n: 0 };
+          per[k].exp += exps[e1].amount;
+          per[k].n += 1;
+        }
+        for (var v1 = 0; v1 < visits.length; v1++) {
+          var k2 = visits[v1].name;
+          per[k2] = per[k2] || { visits: 0, exp: 0, n: 0 };
+          per[k2].visits += 1;
+        }
+
+        var kv = byId("fw-kpi-visits"); if (kv) kv.textContent = String(visits.length);
+        var kt = byId("fw-kpi-total"); if (kt) kt.textContent = formatINR(total);
+        var kc = byId("fw-kpi-count"); if (kc) kc.textContent = exps.length + " entr" + (exps.length === 1 ? "y" : "ies");
+
+        var pt = byId("fw-emp-totals");
+        if (pt) {
+          var names = Object.keys(per).sort();
+          var ph = "";
+          for (var n = 0; n < names.length; n++) {
+            ph += "<div><strong>" + escHtml(names[n]) + "</strong> — " + per[names[n]].visits + " check-in(s) • " + escHtml(formatINR(per[names[n]].exp)) + " (" + per[names[n]].n + " expense" + (per[names[n]].n === 1 ? "" : "s") + ")</div>";
+          }
+          pt.innerHTML = ph || '<span style="color:var(--slate-500);">No activity in this range.</span>';
+        }
+
+        var vh = "";
+        for (var a = 0; a < visits.length; a++) {
+          var v = visits[a];
+          var url = mapUrl(v.gps);
+          var acc = Number(v.accuracy);
+          var diff = clockDiffMin(v);
+          var shown = serverClock(v.serverTime) || v.time;
+          vh += '<article class="log-card"><div class="log-header"><div class="log-meta">' +
+            '<span class="log-name">' + escHtml(v.name) + "</span>" +
+            '<span class="tag-pill">' + escHtml(prettyDate(v.date)) + "</span>" +
+            '<span class="tag-pill shift">🕒 ' + escHtml(prettyTime12(shown)) + "</span>" +
+            (isFinite(acc) && v.accuracy !== "" ? '<span class="tag-pill">' + (acc > 100 ? "⚠️ low accuracy " : "±") + acc + " m</span>" : "") +
+            (diff > 10 ? '<span class="tag-pill" style="background:#fee2e2; color:#991b1b;">⚠️ phone clock off by ' + diff + " min</span>" : "") +
+            "</div></div>" +
+            '<div class="log-block"><div class="log-block-title">' + escHtml(v.site) + "</div>" +
+            (v.purpose ? '<p class="log-block-body">' + escHtml(v.purpose) + "</p>" : "") +
+            '<p class="log-block-body" style="margin-top:4px;">📍 ' +
+            (url ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:underline;">' + escHtml(v.address || "View on map") + " ↗</a>" : escHtml(v.address || "")) +
+            "</p></div></article>";
+        }
+        visitsBox.innerHTML = vh || '<p class="card-subtitle" style="margin:0;">No site check-ins in this range.</p>';
+
+        var xh = "";
+        for (var b = 0; b < exps.length; b++) {
+          var x = exps[b];
+          xh += '<div class="fw-item"><strong>' + escHtml(x.name) + "</strong> • " + escHtml(prettyDate(x.date)) +
+            '<span class="fw-chip">' + escHtml(x.status || "Submitted") + "</span><br>" +
+            escHtml(x.category) + " • <strong>" + escHtml(formatINR(x.amount)) + "</strong>" +
+            (x.description ? "<br>" + escHtml(x.description) : "") +
+            (x.site ? "<br>Site: " + escHtml(x.site) : "") + "</div>";
+        }
+        expBox.innerHTML = xh || '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
+      }
+
+      function exportFieldCsv(kind) {
+        var r = reportRange();
+        function cell(v) { return '"' + String(v == null ? "" : v).split('"').join('""') + '"'; }
+        var rows, headers, name;
+        if (kind === "visits") {
+          headers = ["Date", "Employee", "Phone Time", "Server Time", "Site", "Purpose", "Address", "Accuracy (m)", "Map Link", "GPS"];
+          rows = FIELD_REPORT.visits.filter(function (x) { return inRange(x, r); }).map(function (v) {
+            return [v.date, v.name, v.time, v.serverTime, v.site, v.purpose, v.address, v.accuracy, mapUrl(v.gps), v.gps];
+          });
+          name = "site-checkins.csv";
+        } else {
+          headers = ["Date", "Employee", "Category", "Amount", "Description", "Site", "Status", "Submitted At"];
+          rows = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); }).map(function (x) {
+            return [x.date, x.name, x.category, x.amount, x.description, x.site, x.status, x.serverTime];
+          });
+          name = "expenses.csv";
+        }
+        if (rows.length === 0) { showToast("Nothing to export in this range."); return; }
+        var out = [headers.map(cell).join(",")];
+        for (var i = 0; i < rows.length; i++) out.push(rows[i].map(cell).join(","));
+        downloadSafe("﻿" + out.join("\n"), name, "text/csv;charset=utf-8", name);
+      }
+
       function renderTrackerTab() {
         var today = todayISO();
         var dateEl = byId("filter-date");
@@ -3895,6 +4571,32 @@
         var btnSubmit = byId("btn-submit-eod");
         if (btnSubmit) btnSubmit.onclick = function () { submitEodReport(); };
 
+        var fwCheckBtn = byId("btn-fw-checkin");
+        if (fwCheckBtn) fwCheckBtn.onclick = fwCheckIn;
+        var fwExpBtn = byId("btn-fw-expense");
+        if (fwExpBtn) fwExpBtn.onclick = fwAddExpense;
+        var fwRefresh = byId("btn-fw-refresh");
+        if (fwRefresh) fwRefresh.onclick = function () { FIELD_REPORT.loaded = false; loadFieldReport(); renderFieldReport(); };
+        var fwExV = byId("btn-fw-export-visits");
+        if (fwExV) fwExV.onclick = function () { exportFieldCsv("visits"); };
+        var fwExE = byId("btn-fw-export-exp");
+        if (fwExE) fwExE.onclick = function () { exportFieldCsv("expenses"); };
+        var fwFilters = ["fw-from", "fw-to", "fw-emp-filter"];
+        for (var ff = 0; ff < fwFilters.length; ff++) {
+          var fe = byId(fwFilters[ff]);
+          if (fe) fe.onchange = renderFieldReport;
+        }
+        var fwSel = byId("fw-staff-select");
+        if (fwSel) fwSel.onchange = function () { fwClearErrors(); renderFieldTab(); };
+        var fwPin = byId("fw-pin");
+        if (fwPin) {
+          fwPin.oninput = function () {
+            fwPin.value = fwPin.value.replace(/[^0-9]/g, "");
+            fwPin.classList.remove("has-error");
+            fwClearErrors();
+          };
+        }
+
         var btnGenPins = byId("btn-gen-pins");
         if (btnGenPins) btnGenPins.onclick = generateMissingPins;
         var pinInput = byId("eod-pin");
@@ -4210,6 +4912,12 @@
             return;
           }
 
+          var retryNode = target.closest("[data-fw-retry]");
+          if (retryNode) {
+            fwRetry(retryNode.getAttribute("data-fw-kind"), retryNode.getAttribute("data-fw-retry"));
+            return;
+          }
+
           var pinNode = target.closest("[data-set-pin]");
           if (pinNode) {
             setPinFor(pinNode.getAttribute("data-set-pin"));
@@ -4259,6 +4967,7 @@
         var filterDate = byId("filter-date");
         if (filterDate) filterDate.value = today;
 
+        loadField();
         bindEvents();
         updateShiftDuration();
         setSyncState("local", State.syncMessage);
