@@ -245,7 +245,8 @@
     .nav-tabs {
       display: grid;
       grid-auto-flow: column;
-      grid-auto-columns: 1fr;
+      grid-auto-columns: minmax(max-content, 1fr);
+      overflow-x: auto;
       gap: 6px;
       background-color: var(--bg-muted);
       padding: 4px;
@@ -1250,7 +1251,7 @@
       gap: 8px;
     }
       @media (max-width: 520px) {
-      .nav-tab-btn { font-size: 11.5px; padding: 8px 3px; }
+      .nav-tab-btn { font-size: 11.5px; padding: 8px 8px; white-space: nowrap; }
     }
     .fw-item { border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: #fff; font-size: 13.5px; line-height: 1.45; }
     .fw-item strong { font-weight: 700; }
@@ -1360,6 +1361,12 @@
         <button type="button" id="tab-btn-field" class="nav-tab-btn" data-tab="field">
           <span>🚗 Field &amp; Expenses</span>
         </button>
+        <button type="button" id="tab-btn-expenses" class="nav-tab-btn" data-tab="expenses" style="display:none;">
+          <span>💰 Expenses</span>
+        </button>
+        <button type="button" id="tab-btn-visits" class="nav-tab-btn" data-tab="visits" style="display:none;">
+          <span>📍 Site Visits</span>
+        </button>
         <button type="button" id="tab-btn-backups" class="nav-tab-btn" data-tab="backups">
           <span>💾 Backups &amp; Sheet</span>
         </button>
@@ -1392,6 +1399,7 @@
             <button type="button" id="btn-reset-today" class="preset-btn">Today</button>
           </div>
         </div>
+        <div id="date-note" class="hidden" role="status" style="background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:14px; line-height:1.45;"></div>
 
         <!-- Submission Confirmation Banner -->
         <div id="eod-success-banner" class="success-banner hidden" role="status">
@@ -1562,6 +1570,40 @@
         </div>
         </div><!-- /eod-fields -->
       </div>
+
+      <div class="card" id="edit-card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">✏️ Edit a submitted report</h2>
+            <p class="card-subtitle">Forgot to add an activity or issue? You can update today's report on the same day only. Your punch-in and punch-out times and locations are never changed.</p>
+          </div>
+        </div>
+        <div id="edit-list"></div>
+        <div id="edit-panel" class="hidden" style="border:1px solid var(--border-light); border-radius:14px; padding:14px; margin-top:10px; background:#fff;">
+          <div id="edit-error" class="error-banner hidden" role="alert"><span aria-hidden="true">⚠️</span><span id="edit-error-text"></span></div>
+          <p id="edit-summary" style="margin:0 0 12px 0; font-weight:700; font-size:14px;"></p>
+          <div class="field-group">
+            <label for="edit-activities" class="field-label">Activities done <span class="req-star">*</span></label>
+            <textarea id="edit-activities" class="textarea-ctrl" rows="4"></textarea>
+          </div>
+          <div class="field-group">
+            <label for="edit-issues" class="field-label">Blocker / support needed <span class="hint-pill">(leave empty if none)</span></label>
+            <textarea id="edit-issues" class="textarea-ctrl" rows="2"></textarea>
+          </div>
+          <div class="field-group">
+            <label for="edit-tomorrow" class="field-label">Plans for tomorrow <span class="hint-pill">(optional)</span></label>
+            <textarea id="edit-tomorrow" class="textarea-ctrl" rows="2"></textarea>
+          </div>
+          <div class="field-group">
+            <label for="edit-pin" class="field-label">Your PIN <span class="req-star">*</span></label>
+            <input type="password" id="edit-pin" class="input-ctrl" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="PIN given by your admin" />
+          </div>
+          <div class="btn-group">
+            <button type="button" id="btn-edit-save" class="btn btn-submit"><span>Save changes</span><span class="lime-arrow" aria-hidden="true">→</span></button>
+            <button type="button" id="btn-edit-cancel" class="btn btn-outline">Cancel</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- =================================================================== -->
@@ -1581,11 +1623,6 @@
           <div id="kpi-pending" class="kpi-number">0</div>
           <div id="kpi-pending-sub" class="kpi-sub">Remaining</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Avg Shift Hours</div>
-          <div id="kpi-avg-shift" class="kpi-number">0h 00m</div>
-          <div id="kpi-avg-sub" class="kpi-sub">Today's logs</div>
-        </div>
         <div class="kpi-card issue-alert">
           <div class="kpi-label">Flagged Issues</div>
           <div id="kpi-issues" class="kpi-number">0</div>
@@ -1597,8 +1634,8 @@
       <div class="card">
         <div class="card-header" style="margin-bottom:14px; padding-bottom:12px;">
           <div>
-            <h2 class="card-title">👥 Manage Staff Directory</h2>
-            <p class="card-subtitle">Add or remove team members — updates the employee form &amp; syncs with Google Sheet</p>
+            <h2 class="card-title" id="mgr-staff-title">👥 Manage Staff Directory</h2>
+            <p class="card-subtitle" id="mgr-staff-sub">Add or remove team members — updates the employee form &amp; syncs with Google Sheet</p>
           </div>
           <span id="mgr-staff-count-pill" class="tag-pill">0 Active Staff</span>
         </div>
@@ -1757,39 +1794,98 @@
         <div id="fw-my-list"></div>
       </div>
 
-      <!-- ADMIN ONLY REPORT -->
-      <div id="fw-admin-report" style="display:none;">
-        <div class="card">
-          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
-            <div>
-              <h2 class="card-title">🛡️ Admin: Site Visits &amp; Expenses</h2>
-              <p class="card-subtitle">Only you can see this. Expense status can be edited in the Google Sheet (Expenses tab, Status column).</p>
-            </div>
-          </div>
-          <div class="filters-row">
-            <input type="date" id="fw-from" class="input-ctrl" style="min-height:46px;" />
-            <input type="date" id="fw-to" class="input-ctrl" style="min-height:46px;" />
-            <select id="fw-emp-filter" class="select-ctrl"><option value="">All employees</option></select>
-            <button type="button" id="btn-fw-refresh" class="btn btn-outline">↻ Refresh</button>
-          </div>
-          <div class="kpi-grid" style="margin-top:12px;">
-            <div class="kpi-card"><div class="kpi-label">Site Check-ins</div><div id="fw-kpi-visits" class="kpi-number">0</div><div class="kpi-sub">In range</div></div>
-            <div class="kpi-card"><div class="kpi-label">Expenses Total</div><div id="fw-kpi-total" class="kpi-number">₹0</div><div id="fw-kpi-count" class="kpi-sub">0 entries</div></div>
-          </div>
-          <div id="fw-emp-totals" style="margin-top:12px; font-size:13.5px; line-height:1.6;"></div>
-          <div class="btn-group" style="margin-top:12px;">
-            <button type="button" id="btn-fw-export-visits" class="btn btn-dark">📥 Export Visits CSV</button>
-            <button type="button" id="btn-fw-export-exp" class="btn btn-dark">📥 Export Expenses CSV</button>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- ADMIN TAB: EXPENSE SUMMARY                                          -->
+    <!-- =================================================================== -->
+    <section id="panel-expenses" class="tab-panel" style="display:none;">
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">💰 Expense Summary</h2>
+            <p class="card-subtitle">Only you can see this. Change an expense's Status (Approved, Paid…) in the Google Sheet, Expenses tab.</p>
           </div>
         </div>
-        <div class="card">
-          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">Site check-ins</h2></div>
-          <div id="fw-visits-list"></div>
+        <div class="btn-group" style="margin-bottom:10px;">
+          <button type="button" class="preset-btn" data-rep-preset="ex:today">Today</button>
+          <button type="button" class="preset-btn" data-rep-preset="ex:month">This month</button>
+          <button type="button" class="preset-btn" data-rep-preset="ex:all">All time</button>
         </div>
-        <div class="card">
-          <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">Expenses</h2></div>
-          <div id="fw-expenses-list"></div>
+        <div class="filters-row">
+          <input type="date" id="ex-from" class="input-ctrl" style="min-height:46px;" />
+          <input type="date" id="ex-to" class="input-ctrl" style="min-height:46px;" />
+          <select id="ex-emp" class="select-ctrl"><option value="">All employees</option></select>
+          <select id="ex-cat" class="select-ctrl">
+            <option value="">All categories</option>
+            <option>Travel / Fuel</option><option>Food</option><option>Accommodation</option>
+            <option>Parking / Toll</option><option>Materials / Purchase</option><option>Other</option>
+          </select>
+          <button type="button" id="btn-ex-refresh" class="btn btn-outline">↻ Refresh</button>
         </div>
+        <div class="kpi-grid" style="margin-top:12px;">
+          <div class="kpi-card"><div class="kpi-label">Total Expenses</div><div id="ex-kpi-total" class="kpi-number">₹0</div><div class="kpi-sub">In range</div></div>
+          <div class="kpi-card"><div class="kpi-label">Entries</div><div id="ex-kpi-count" class="kpi-number">0</div><div id="ex-kpi-emps" class="kpi-sub">0 employees</div></div>
+        </div>
+        <div class="btn-group" style="margin-top:12px;">
+          <button type="button" id="btn-ex-xlsx" class="btn btn-dark">📥 Download Excel</button>
+          <button type="button" id="btn-ex-share" class="btn btn-outline" style="display:none;">📤 Share Excel</button>
+          <button type="button" id="btn-ex-csv" class="btn btn-outline">CSV</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">By employee</h2></div>
+        <div id="ex-by-emp"></div>
+      </div>
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">By category</h2></div>
+        <div id="ex-by-cat"></div>
+      </div>
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">All expenses</h2></div>
+        <div id="ex-list"></div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- ADMIN TAB: SITE VISITS SUMMARY                                      -->
+    <!-- =================================================================== -->
+    <section id="panel-visits" class="tab-panel" style="display:none;">
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;">
+          <div>
+            <h2 class="card-title">📍 Site Visits</h2>
+            <p class="card-subtitle">Only you can see this. Each check-in has a real GPS location, address and a Google server time.</p>
+          </div>
+        </div>
+        <div class="btn-group" style="margin-bottom:10px;">
+          <button type="button" class="preset-btn" data-rep-preset="vs:today">Today</button>
+          <button type="button" class="preset-btn" data-rep-preset="vs:month">This month</button>
+          <button type="button" class="preset-btn" data-rep-preset="vs:all">All time</button>
+        </div>
+        <div class="filters-row">
+          <input type="date" id="vs-from" class="input-ctrl" style="min-height:46px;" />
+          <input type="date" id="vs-to" class="input-ctrl" style="min-height:46px;" />
+          <select id="vs-emp" class="select-ctrl"><option value="">All employees</option></select>
+          <button type="button" id="btn-vs-refresh" class="btn btn-outline">↻ Refresh</button>
+        </div>
+        <div class="kpi-grid" style="margin-top:12px;">
+          <div class="kpi-card"><div class="kpi-label">Check-ins</div><div id="vs-kpi-count" class="kpi-number">0</div><div class="kpi-sub">In range</div></div>
+          <div class="kpi-card"><div class="kpi-label">Employees</div><div id="vs-kpi-emps" class="kpi-number">0</div><div id="vs-kpi-sites" class="kpi-sub">0 sites</div></div>
+        </div>
+        <div class="btn-group" style="margin-top:12px;">
+          <button type="button" id="btn-vs-xlsx" class="btn btn-dark">📥 Download Excel</button>
+          <button type="button" id="btn-vs-share" class="btn btn-outline" style="display:none;">📤 Share Excel</button>
+          <button type="button" id="btn-vs-csv" class="btn btn-outline">CSV</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">By employee</h2></div>
+        <div id="vs-by-emp"></div>
+      </div>
+      <div class="card">
+        <div class="card-header" style="margin-bottom:12px; padding-bottom:10px;"><h2 class="card-title">All check-ins</h2></div>
+        <div id="vs-list"></div>
       </div>
     </section>
 
@@ -2126,7 +2222,9 @@
           issueDetails: issDetails,
           tomorrowPlan: planText,
           createdAtMs: createdMs,
-          submittedAt: String(raw.submittedAt || new Date(createdMs).toISOString())
+          submittedAt: String(raw.submittedAt || new Date(createdMs).toISOString()),
+          editedAt: String(raw.editedAt || ""),
+          pending: raw.pending === true
         };
       }
 
@@ -2280,27 +2378,37 @@
               }
 
               /* Merge logs by id cleanly */
+              /* The Google Sheet is the source of truth. A log that is no longer in the sheet
+                 (deleted there) is removed here too, EXCEPT one that is still waiting to be saved. */
               var logMap = {};
               for (var i = 0; i < LOGS.length; i++) {
                 logMap[LOGS[i].id] = LOGS[i];
               }
               var remoteLogs = Array.isArray(data.logs) ? data.logs : [];
+              var remoteIds = {};
               var resendLogs = [];
+              var resendEdits = [];
               for (var r = 0; r < remoteLogs.length; r++) {
                 var norm = normalizeLog(remoteLogs[r]);
                 if (norm) {
+                  remoteIds[norm.id] = true;
                   var existingLog = logMap[norm.id];
                   if (existingLog && existingLog.status === "done" && norm.status === "in") {
                     resendLogs.push(existingLog);
+                  } else if (existingLog && existingLog.pending && String(existingLog.editedAt || "") > String(norm.editedAt || "")) {
+                    resendEdits.push(existingLog);   /* my edit has not reached the sheet yet: keep mine */
                   } else {
+                    norm.pending = false;
                     logMap[norm.id] = norm;
                   }
                 }
               }
               var mergedLogs = [];
               var ids = Object.keys(logMap);
+              var removedCount = 0;
               for (var k = 0; k < ids.length; k++) {
-                mergedLogs.push(logMap[ids[k]]);
+                if (remoteIds[ids[k]] || logMap[ids[k]].pending) mergedLogs.push(logMap[ids[k]]);
+                else removedCount++;
               }
               LOGS = mergedLogs;
               persistLocalLogs();
@@ -2310,6 +2418,13 @@
                   postToSheet({ action: "save_log", log: toSheetLog(resendLogs[rs]), pin: resendPin }, false, "retry");
                 }
               }
+              for (var re = 0; re < resendEdits.length; re++) {
+                var editPin = pinForName(resendEdits[re].employeeName);
+                if (editPin) {
+                  postToSheet({ action: "edit_log", log: editPayload(resendEdits[re]), pin: editPin }, false, "edit retry");
+                }
+              }
+              if (removedCount > 0 && showFeedback) showToast(removedCount + " entr" + (removedCount === 1 ? "y" : "ies") + " no longer in the sheet were removed here.");
 
               /* Update staff if returned */
               if (Array.isArray(data.staff) && data.staff.length > 0) {
@@ -2351,6 +2466,51 @@
       }
 
       /* Confirms a punch/EOD really reached the sheet (saves are sent "no-cors", so errors are otherwise invisible). */
+      function markNotPending(id) {
+        for (var i = 0; i < LOGS.length; i++) {
+          if (LOGS[i].id === id) {
+            if (LOGS[i].pending) { LOGS[i].pending = false; persistLocalLogs(); try { renderEditCard(); } catch (e) {} }
+            return;
+          }
+        }
+      }
+
+      function editPayload(l) {
+        return { id: l.id, employeeName: l.employeeName, activities: l.activities || "", hasIssue: !!l.hasIssue, issueDetails: l.issueDetails || "", tomorrowPlan: l.tomorrowPlan || "", editedAt: l.editedAt || "" };
+      }
+
+      function verifyEdit(log, attempt) {
+        setTimeout(function () {
+          var url = getCurrentExecUrl();
+          var sep = url.indexOf("?") === -1 ? "?" : "&";
+          fetch(url + sep + "_ts=" + Date.now(), { method: "GET", redirect: "follow" })
+            .then(function (res) { return res.text(); })
+            .then(function (txt) {
+              var d = null;
+              try { d = JSON.parse(txt); } catch (e) { d = null; }
+              var ok = false;
+              if (d && d.ok && Array.isArray(d.logs)) {
+                for (var i = 0; i < d.logs.length; i++) {
+                  if (String(d.logs[i].id) === String(log.id)) { ok = String(d.logs[i].editedAt || "") === String(log.editedAt || ""); break; }
+                }
+              }
+              if (ok) {
+                markNotPending(log.id);
+                setSyncState("synced", "Edit confirmed in Google Sheet at " + new Date().toLocaleTimeString() + ".");
+                showToast("✓ Your changes are saved in the Google Sheet.");
+              } else if (attempt < 3) {
+                verifyEdit(log, attempt + 1);
+              } else {
+                setSyncState("error", "Edit NOT confirmed in Google Sheet.");
+                showToast("⚠️ Edit saved on this device but NOT confirmed in the sheet. Check your internet and tell your admin.");
+              }
+            })
+            .catch(function () {
+              if (attempt < 3) verifyEdit(log, attempt + 1);
+            });
+        }, attempt === 1 ? 4000 : 6000);
+      }
+
       function verifySaved(log, attempt) {
         function warn() {
           setSyncState("error", "NOT confirmed in Google Sheet. Saved on this device only.");
@@ -2375,6 +2535,7 @@
                 }
               }
               if (ok) {
+                markNotPending(log.id);
                 setSyncState("synced", "Confirmed in Google Sheet at " + new Date().toLocaleTimeString() + ".");
               } else if (attempt < 2) {
                 verifySaved(log, attempt + 1);
@@ -2414,6 +2575,9 @@
               if (payloadObj && payloadObj.action === "save_log" && payloadObj.log) {
                 setSyncState("syncing", "Sent. Confirming with Google Sheet...");
                 verifySaved(payloadObj.log, 1);
+              } else if (payloadObj && payloadObj.action === "edit_log" && payloadObj.log) {
+                setSyncState("syncing", "Sent. Confirming your changes with Google Sheet...");
+                verifyEdit(payloadObj.log, 1);
               } else {
               setSyncState(
                 "synced",
@@ -2495,7 +2659,13 @@
         setDisp(byId("clear-logs-confirm-bar"), show);
         setDisp(byId("btn-ask-clear-logs"), show);
         setDisp(byId("admin-pin-tools"), show);
-        setDisp(byId("fw-admin-report"), show);
+        setDisp(byId("mgr-staff-sub"), show);
+        var stTitle = byId("mgr-staff-title");
+        if (stTitle) stTitle.textContent = show ? "👥 Manage Staff Directory" : "👥 Team Status";
+        setDisp(byId("tab-btn-expenses"), show);
+        setDisp(byId("tab-btn-visits"), show);
+        setDisp(byId("panel-expenses"), show);
+        setDisp(byId("panel-visits"), show);
       }
 
       /* Admin mode needs the admin code (checked by your Google script), so ?admin=1 alone is not enough. */
@@ -2637,10 +2807,10 @@
       }
 
       function switchTab(tabName) {
-        var target = (tabName === "tracker" || tabName === "field" || (tabName === "backups" && IS_ADMIN)) ? tabName : "form";
+        var target = (tabName === "tracker" || tabName === "field" || (IS_ADMIN && (tabName === "backups" || tabName === "expenses" || tabName === "visits"))) ? tabName : "form";
         State.activeTab = target;
 
-        var tabs = ["form", "tracker", "field", "backups"];
+        var tabs = ["form", "tracker", "field", "expenses", "visits", "backups"];
         for (var i = 0; i < tabs.length; i++) {
           var t = tabs[i];
           var panel = byId("panel-" + t);
@@ -2795,6 +2965,18 @@
       }
 
       function updatePunchClock() {
+        /* page left open past midnight: roll "today" forward */
+        var nowDay = todayISO();
+        if (State.dayStamp && State.dayStamp !== nowDay) {
+          var dEl = byId("eod-date");
+          if (dEl) {
+            dEl.max = nowDay;
+            if (dEl.value === State.dayStamp && !dEl.disabled) dEl.value = nowDay;
+          }
+          State.dayStamp = nowDay;
+          try { updateFormMode(); updateTodayBadge(); } catch (e0) {}
+        }
+        State.dayStamp = nowDay;
         var c = byId("punch-clock");
         if (c) c.textContent = "🕘 " + prettyTime12(nowHHMM());
       }
@@ -2844,8 +3026,14 @@
           tomorrow: e.tomorrowPlan || "",
           createdAtMs: e.createdAtMs,
           submittedAt: e.submittedAt,
+          editedAt: e.editedAt || "",
           status: e.status === "in" ? "in" : "done"
         };
+      }
+
+      function selectedDate() {
+        var d = byId("eod-date");
+        return (d && d.value) ? d.value : todayISO();
       }
 
       function updateFormMode() {
@@ -2862,11 +3050,35 @@
 
         var name = currentEmployeeName();
         var open = findOpenPunch(name);
-        var mode = !name ? "none" : (open ? "eod" : (State.manualMode ? "manual" : "punch"));
+        var dateEl = byId("eod-date");
+        var todayBtn = byId("btn-reset-today");
+        var dateNote = byId("date-note");
+        if (dateEl && !open && dateEl.value && dateEl.value > todayISO()) dateEl.value = todayISO();
+        var isPast = !open && !!name && selectedDate() < todayISO();
+        var mode = !name ? "none" : (open ? "eod" : ((State.manualMode || isPast) ? "manual" : "punch"));
+
+        /* While punched in, the date is fixed to the punch-in date; otherwise the person can choose it */
+        if (dateEl) {
+          dateEl.disabled = (mode === "eod");
+          if (mode === "eod" && open) dateEl.value = open.date;
+        }
+        if (todayBtn) {
+          todayBtn.disabled = (mode === "eod");
+          var onToday = selectedDate() === todayISO();
+          if (onToday) todayBtn.classList.add("active-toggle"); else todayBtn.classList.remove("active-toggle");
+        }
+        if (dateNote) {
+          if (isPast) {
+            dateNote.innerHTML = "📅 <strong>Back-dated entry for " + escHtml(prettyDate(selectedDate())) + "</strong><br>This is not today. Enter your login and logout times below. It will be marked as a back-dated entry. To punch in for today, tap <strong>Today</strong>.";
+            dateNote.classList.remove("hidden");
+          } else {
+            dateNote.classList.add("hidden");
+          }
+        }
 
         punchPanel.classList.toggle("hidden", mode !== "punch");
         fields.classList.toggle("hidden", mode !== "eod" && mode !== "manual");
-        if (cancelManual) cancelManual.classList.toggle("hidden", mode !== "manual");
+        if (cancelManual) cancelManual.classList.toggle("hidden", mode !== "manual" || isPast);
 
         if (banner) {
           if (mode === "eod") {
@@ -2894,8 +3106,9 @@
             outEl.value = nowHHMM();
             State.logoutPrefillFor = open.id;
           }
-        } else if (State.lastFormMode === "eod" && locEl) {
-          locEl.value = "";
+        } else if (State.lastFormMode === "eod") {
+          if (locEl) locEl.value = "";
+          if (dateEl) dateEl.value = todayISO();
         }
         State.lastFormMode = mode;
         updateShiftDuration();
@@ -3047,6 +3260,11 @@
           updateFormMode();
           return;
         }
+        if (selectedDate() !== todayISO()) {
+          showFormError("Punch-in is only for today. Tap Today, or fill in the back-dated report below.", byId("eod-date"));
+          updateFormMode();
+          return;
+        }
 
         if (gps === undefined) {
           var pinEl = byId("eod-pin");
@@ -3109,6 +3327,7 @@
           issueDetails: "",
           tomorrowPlan: "",
           status: "in",
+          pending: true,
           createdAtMs: nowMs,
           submittedAt: new Date(nowMs).toISOString()
         };
@@ -3212,6 +3431,7 @@
         }
 
         updateFormMode();
+        renderEditCard();
       }
 
       function updateShiftDuration() {
@@ -3307,6 +3527,10 @@
         var tomEl = byId("eod-tomorrow");
 
         var reportDate = (dateEl && dateEl.value) ? dateEl.value : todayISO();
+        if (reportDate > todayISO()) {
+          showFormError("The date cannot be in the future. Tap Today or pick an earlier date.", dateEl);
+          return;
+        }
         var employeeName = STAFF.length > 0
           ? (selEl ? selEl.value : "")
           : (manEl ? normalizeSpaces(manEl.value) : "");
@@ -3320,7 +3544,7 @@
         }
 
         var openPunch = findOpenPunch(employeeName);
-        if (!openPunch && !State.manualMode) {
+        if (!openPunch && !State.manualMode && reportDate >= todayISO()) {
           showFormError("Please punch in first, then submit your report at the end of the day.", selEl || manEl);
           return;
         }
@@ -3328,6 +3552,9 @@
         var logoutVal = outEl ? outEl.value : "";
         var locEl = byId("eod-login-location");
         var locationVal = openPunch ? (openPunch.loginLocation || "") : (locEl ? normalizeSpaces(locEl.value) : "");
+        if (!openPunch && locationVal && reportDate < todayISO() && locationVal.indexOf("Back-dated") === -1) {
+          locationVal = locationVal + " • Back-dated entry";
+        }
         if (!loginVal) {
           showFormError("Please select your Login Time.", inEl);
           return;
@@ -3416,6 +3643,7 @@
           logoutGps: gpsToStr(gps),
           logoutAddress: addr || "",
           loginAddress: openPunch ? (openPunch.loginAddress || "") : "",
+          pending: true,
           submittedAt: new Date(nowMs).toISOString()
         };
 
@@ -3430,6 +3658,7 @@
           openPunch.issueDetails = entry.issueDetails;
           openPunch.tomorrowPlan = entry.tomorrowPlan;
           openPunch.status = "done";
+          openPunch.pending = true;
           openPunch.submittedAt = entry.submittedAt;
           entry = openPunch;
           reportDate = entry.date;
@@ -3867,35 +4096,43 @@
           box.innerHTML = html;
         }
 
-        if (IS_ADMIN && State.activeTab === "field" && !FIELD_REPORT.loaded && !FIELD_REPORT.loading) loadFieldReport();
-        if (IS_ADMIN) renderFieldReport();
+        if (IS_ADMIN) {
+          if ((State.activeTab === "expenses" || State.activeTab === "visits") && !FIELD_REPORT.loaded && !FIELD_REPORT.loading) loadFieldReport();
+          renderExpensesReport();
+          renderVisitsReport();
+        }
       }
 
-      /* ---------- Admin report ---------- */
+      /* ---------- Admin reports (Expenses tab + Site Visits tab) ---------- */
+      function monthStartISO() {
+        var d = new Date();
+        return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-01";
+      }
+
       function loadFieldReport() {
         if (!IS_ADMIN || FIELD_REPORT.loading) return;
         FIELD_REPORT.loading = true;
         execGet({ action: "fieldData", code: getAdminCode() }, function (d) {
           FIELD_REPORT.loading = false;
           if (!d || !d.ok) {
-            showToast("Could not load the field report" + (d && d.error ? ": " + d.error : ". Is the Google script the latest version?"));
+            showToast("Could not load the report" + (d && d.error ? ": " + d.error : ". Is the Google script the latest version?"));
             return;
           }
           FIELD_REPORT.visits = Array.isArray(d.visits) ? d.visits : [];
           FIELD_REPORT.expenses = Array.isArray(d.expenses) ? d.expenses : [];
           FIELD_REPORT.loaded = true;
-          renderFieldReport();
+          renderExpensesReport();
+          renderVisitsReport();
         });
       }
 
-      function reportRange() {
-        var f = byId("fw-from");
-        var t = byId("fw-to");
-        var e = byId("fw-emp-filter");
+      function repRange(p) {
+        var f = byId(p + "-from"), t = byId(p + "-to"), e = byId(p + "-emp"), c = byId(p + "-cat");
         return {
           from: (f && f.value) ? f.value : "",
           to: (t && t.value) ? t.value : "",
-          emp: e ? e.value : ""
+          emp: e ? e.value : "",
+          cat: c ? c.value : ""
         };
       }
 
@@ -3903,7 +4140,35 @@
         if (r.from && item.date < r.from) return false;
         if (r.to && item.date > r.to) return false;
         if (r.emp && String(item.name).trim().toLowerCase() !== r.emp.trim().toLowerCase()) return false;
+        if (r.cat && item.category !== r.cat) return false;
         return true;
+      }
+
+      function initRepFilters(p, defaultFrom) {
+        var f = byId(p + "-from"), t = byId(p + "-to"), e = byId(p + "-emp");
+        if (f && !f.getAttribute("data-init")) { f.value = defaultFrom; f.setAttribute("data-init", "1"); }
+        if (t && !t.getAttribute("data-init")) { t.value = todayISO(); t.setAttribute("data-init", "1"); }
+        if (e) {
+          var cur = e.value;
+          var o = '<option value="">All employees</option>';
+          for (var i = 0; i < STAFF.length; i++) o += '<option value="' + escHtml(STAFF[i]) + '">' + escHtml(STAFF[i]) + "</option>";
+          if (e.getAttribute("data-sig") !== o) {
+            e.innerHTML = o;
+            e.setAttribute("data-sig", o);
+            e.value = cur;
+          }
+        }
+      }
+
+      function applyPreset(code) {
+        var p = code.split(":")[0];
+        var kind = code.split(":")[1];
+        var f = byId(p + "-from"), t = byId(p + "-to");
+        if (!f || !t) return;
+        if (kind === "today") { f.value = todayISO(); t.value = todayISO(); }
+        else if (kind === "month") { f.value = monthStartISO(); t.value = todayISO(); }
+        else { f.value = ""; t.value = ""; }
+        if (p === "ex") renderExpensesReport(); else renderVisitsReport();
       }
 
       function serverClock(iso) {
@@ -3913,7 +4178,6 @@
       }
 
       function clockDiffMin(v) {
-        /* minutes between phone-reported time and Google's server time (flags a wrong / changed phone clock) */
         var d = new Date(v.serverTime);
         if (isNaN(d.getTime()) || !v.date || !v.time) return 0;
         var p = String(v.time).split(":");
@@ -3922,125 +4186,466 @@
         return Math.round(Math.abs(d.getTime() - phone.getTime()) / 60000);
       }
 
-      function renderFieldReport() {
-        var visitsBox = byId("fw-visits-list");
-        var expBox = byId("fw-expenses-list");
-        if (!visitsBox || !expBox) return;
+      function sortedKeys(obj) { return Object.keys(obj).sort(); }
 
-        var fEl = byId("fw-from");
-        var tEl = byId("fw-to");
-        if (fEl && !fEl.value && !fEl.getAttribute("data-init")) { fEl.value = todayISO(); fEl.setAttribute("data-init", "1"); }
-        if (tEl && !tEl.value && !tEl.getAttribute("data-init")) { tEl.value = todayISO(); tEl.setAttribute("data-init", "1"); }
-
-        /* employee filter options */
-        var eSel = byId("fw-emp-filter");
-        if (eSel) {
-          var cur = eSel.value;
-          var o = '<option value="">All employees</option>';
-          for (var i = 0; i < STAFF.length; i++) o += '<option value="' + escHtml(STAFF[i]) + '">' + escHtml(STAFF[i]) + "</option>";
-          if (eSel.getAttribute("data-sig") !== o) {
-            eSel.innerHTML = o;
-            eSel.setAttribute("data-sig", o);
-            eSel.value = cur;
-          }
+      function expenseView() {
+        var r = repRange("ex");
+        var list = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); });
+        list.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(b.serverTime).localeCompare(String(a.serverTime)); });
+        var total = 0, byEmp = {}, byCat = {};
+        for (var i = 0; i < list.length; i++) {
+          var x = list[i];
+          total += x.amount;
+          byEmp[x.name] = byEmp[x.name] || { n: 0, sum: 0 };
+          byEmp[x.name].n++; byEmp[x.name].sum += x.amount;
+          byCat[x.category] = byCat[x.category] || { n: 0, sum: 0 };
+          byCat[x.category].n++; byCat[x.category].sum += x.amount;
         }
+        return { r: r, list: list, total: total, byEmp: byEmp, byCat: byCat };
+      }
 
+      function renderExpensesReport() {
+        var box = byId("ex-list");
+        if (!box) return;
+        initRepFilters("ex", monthStartISO());
         if (!FIELD_REPORT.loaded) {
-          visitsBox.innerHTML = '<p class="card-subtitle" style="margin:0;">' + (FIELD_REPORT.loading ? "Loading…" : "Tap Refresh to load.") + "</p>";
-          expBox.innerHTML = "";
+          box.innerHTML = '<p class="card-subtitle" style="margin:0;">' + (FIELD_REPORT.loading ? "Loading…" : "Tap Refresh to load.") + "</p>";
           return;
         }
+        var v = expenseView();
+        var empNames = sortedKeys(v.byEmp);
+        byId("ex-kpi-total").textContent = formatINR(v.total);
+        byId("ex-kpi-count").textContent = String(v.list.length);
+        byId("ex-kpi-emps").textContent = empNames.length + " employee" + (empNames.length === 1 ? "" : "s");
 
-        var r = reportRange();
-        var visits = FIELD_REPORT.visits.filter(function (x) { return inRange(x, r); });
-        var exps = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); });
-        visits.sort(function (a, b) { return String(b.serverTime || b.date).localeCompare(String(a.serverTime || a.date)); });
-        exps.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(b.serverTime).localeCompare(String(a.serverTime)); });
-
-        var total = 0;
-        var per = {};
-        for (var e1 = 0; e1 < exps.length; e1++) {
-          total += exps[e1].amount;
-          var k = exps[e1].name;
-          per[k] = per[k] || { visits: 0, exp: 0, n: 0 };
-          per[k].exp += exps[e1].amount;
-          per[k].n += 1;
+        var eh = "";
+        for (var i = 0; i < empNames.length; i++) {
+          var e = v.byEmp[empNames[i]];
+          eh += '<div class="fw-item"><strong>' + escHtml(empNames[i]) + "</strong><br>" + escHtml(formatINR(e.sum)) + " • " + e.n + " expense" + (e.n === 1 ? "" : "s") + "</div>";
         }
-        for (var v1 = 0; v1 < visits.length; v1++) {
-          var k2 = visits[v1].name;
-          per[k2] = per[k2] || { visits: 0, exp: 0, n: 0 };
-          per[k2].visits += 1;
-        }
+        byId("ex-by-emp").innerHTML = eh ? eh + '<p style="margin:6px 0 0 0; font-weight:700;">Total: ' + escHtml(formatINR(v.total)) + "</p>" : '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
 
-        var kv = byId("fw-kpi-visits"); if (kv) kv.textContent = String(visits.length);
-        var kt = byId("fw-kpi-total"); if (kt) kt.textContent = formatINR(total);
-        var kc = byId("fw-kpi-count"); if (kc) kc.textContent = exps.length + " entr" + (exps.length === 1 ? "y" : "ies");
-
-        var pt = byId("fw-emp-totals");
-        if (pt) {
-          var names = Object.keys(per).sort();
-          var ph = "";
-          for (var n = 0; n < names.length; n++) {
-            ph += "<div><strong>" + escHtml(names[n]) + "</strong> — " + per[names[n]].visits + " check-in(s) • " + escHtml(formatINR(per[names[n]].exp)) + " (" + per[names[n]].n + " expense" + (per[names[n]].n === 1 ? "" : "s") + ")</div>";
-          }
-          pt.innerHTML = ph || '<span style="color:var(--slate-500);">No activity in this range.</span>';
+        var catNames = sortedKeys(v.byCat);
+        var ch = "";
+        for (var c = 0; c < catNames.length; c++) {
+          var cc = v.byCat[catNames[c]];
+          ch += '<div class="fw-item"><strong>' + escHtml(catNames[c]) + "</strong><br>" + escHtml(formatINR(cc.sum)) + " • " + cc.n + " entr" + (cc.n === 1 ? "y" : "ies") + "</div>";
         }
-
-        var vh = "";
-        for (var a = 0; a < visits.length; a++) {
-          var v = visits[a];
-          var url = mapUrl(v.gps);
-          var acc = Number(v.accuracy);
-          var diff = clockDiffMin(v);
-          var shown = serverClock(v.serverTime) || v.time;
-          vh += '<article class="log-card"><div class="log-header"><div class="log-meta">' +
-            '<span class="log-name">' + escHtml(v.name) + "</span>" +
-            '<span class="tag-pill">' + escHtml(prettyDate(v.date)) + "</span>" +
-            '<span class="tag-pill shift">🕒 ' + escHtml(prettyTime12(shown)) + "</span>" +
-            (isFinite(acc) && v.accuracy !== "" ? '<span class="tag-pill">' + (acc > 100 ? "⚠️ low accuracy " : "±") + acc + " m</span>" : "") +
-            (diff > 10 ? '<span class="tag-pill" style="background:#fee2e2; color:#991b1b;">⚠️ phone clock off by ' + diff + " min</span>" : "") +
-            "</div></div>" +
-            '<div class="log-block"><div class="log-block-title">' + escHtml(v.site) + "</div>" +
-            (v.purpose ? '<p class="log-block-body">' + escHtml(v.purpose) + "</p>" : "") +
-            '<p class="log-block-body" style="margin-top:4px;">📍 ' +
-            (url ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:underline;">' + escHtml(v.address || "View on map") + " ↗</a>" : escHtml(v.address || "")) +
-            "</p></div></article>";
-        }
-        visitsBox.innerHTML = vh || '<p class="card-subtitle" style="margin:0;">No site check-ins in this range.</p>';
+        byId("ex-by-cat").innerHTML = ch || '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
 
         var xh = "";
-        for (var b = 0; b < exps.length; b++) {
-          var x = exps[b];
+        for (var b = 0; b < v.list.length; b++) {
+          var x = v.list[b];
           xh += '<div class="fw-item"><strong>' + escHtml(x.name) + "</strong> • " + escHtml(prettyDate(x.date)) +
             '<span class="fw-chip">' + escHtml(x.status || "Submitted") + "</span><br>" +
             escHtml(x.category) + " • <strong>" + escHtml(formatINR(x.amount)) + "</strong>" +
             (x.description ? "<br>" + escHtml(x.description) : "") +
             (x.site ? "<br>Site: " + escHtml(x.site) : "") + "</div>";
         }
-        expBox.innerHTML = xh || '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
+        box.innerHTML = xh || '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
       }
 
-      function exportFieldCsv(kind) {
-        var r = reportRange();
-        function cell(v) { return '"' + String(v == null ? "" : v).split('"').join('""') + '"'; }
-        var rows, headers, name;
-        if (kind === "visits") {
-          headers = ["Date", "Employee", "Phone Time", "Server Time", "Site", "Purpose", "Address", "Accuracy (m)", "Map Link", "GPS"];
-          rows = FIELD_REPORT.visits.filter(function (x) { return inRange(x, r); }).map(function (v) {
-            return [v.date, v.name, v.time, v.serverTime, v.site, v.purpose, v.address, v.accuracy, mapUrl(v.gps), v.gps];
-          });
-          name = "site-checkins.csv";
-        } else {
-          headers = ["Date", "Employee", "Category", "Amount", "Description", "Site", "Status", "Submitted At"];
-          rows = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); }).map(function (x) {
-            return [x.date, x.name, x.category, x.amount, x.description, x.site, x.status, x.serverTime];
-          });
-          name = "expenses.csv";
+      function visitView() {
+        var r = repRange("vs");
+        var list = FIELD_REPORT.visits.filter(function (x) { return inRange(x, r); });
+        list.sort(function (a, b) { return String(b.serverTime || b.date).localeCompare(String(a.serverTime || a.date)); });
+        var byEmp = {}, sites = {};
+        for (var i = 0; i < list.length; i++) {
+          var v = list[i];
+          var k = v.name;
+          byEmp[k] = byEmp[k] || { n: 0, sites: {}, days: {}, first: "", last: "" };
+          byEmp[k].n++;
+          byEmp[k].sites[String(v.site).trim().toLowerCase()] = true;
+          byEmp[k].days[v.date] = true;
+          sites[String(v.site).trim().toLowerCase()] = true;
+          var sc = v.serverTime || "";
+          if (!byEmp[k].first || sc < byEmp[k].first) byEmp[k].first = sc;
+          if (!byEmp[k].last || sc > byEmp[k].last) byEmp[k].last = sc;
         }
-        if (rows.length === 0) { showToast("Nothing to export in this range."); return; }
+        return { r: r, list: list, byEmp: byEmp, siteCount: Object.keys(sites).length };
+      }
+
+      function renderVisitsReport() {
+        var box = byId("vs-list");
+        if (!box) return;
+        initRepFilters("vs", todayISO());
+        if (!FIELD_REPORT.loaded) {
+          box.innerHTML = '<p class="card-subtitle" style="margin:0;">' + (FIELD_REPORT.loading ? "Loading…" : "Tap Refresh to load.") + "</p>";
+          return;
+        }
+        var v = visitView();
+        var names = sortedKeys(v.byEmp);
+        byId("vs-kpi-count").textContent = String(v.list.length);
+        byId("vs-kpi-emps").textContent = String(names.length);
+        byId("vs-kpi-sites").textContent = v.siteCount + " distinct site" + (v.siteCount === 1 ? "" : "s");
+
+        var sh = "";
+        for (var i = 0; i < names.length; i++) {
+          var e = v.byEmp[names[i]];
+          var nSites = Object.keys(e.sites).length;
+          var nDays = Object.keys(e.days).length;
+          sh += '<div class="fw-item"><strong>' + escHtml(names[i]) + "</strong><br>" + e.n + " check-in" + (e.n === 1 ? "" : "s") + " • " + nSites + " site" + (nSites === 1 ? "" : "s") + " • " + nDays + " day" + (nDays === 1 ? "" : "s") +
+            (e.first ? "<br>First " + escHtml(prettyTime12(serverClock(e.first))) + " • Last " + escHtml(prettyTime12(serverClock(e.last))) : "") + "</div>";
+        }
+        byId("vs-by-emp").innerHTML = sh || '<p class="card-subtitle" style="margin:0;">No site check-ins in this range.</p>';
+
+        var vh = "";
+        for (var a = 0; a < v.list.length; a++) {
+          var it = v.list[a];
+          var url = mapUrl(it.gps);
+          var acc = Number(it.accuracy);
+          var diff = clockDiffMin(it);
+          var shown = serverClock(it.serverTime) || it.time;
+          vh += '<article class="log-card"><div class="log-header"><div class="log-meta">' +
+            '<span class="log-name">' + escHtml(it.name) + "</span>" +
+            '<span class="tag-pill">' + escHtml(prettyDate(it.date)) + "</span>" +
+            '<span class="tag-pill shift">🕒 ' + escHtml(prettyTime12(shown)) + "</span>" +
+            (isFinite(acc) && it.accuracy !== "" ? '<span class="tag-pill">' + (acc > 100 ? "⚠️ low accuracy " : "±") + acc + " m</span>" : "") +
+            (diff > 10 ? '<span class="tag-pill" style="background:#fee2e2; color:#991b1b;">⚠️ phone clock off by ' + diff + " min</span>" : "") +
+            "</div></div>" +
+            '<div class="log-block"><div class="log-block-title">' + escHtml(it.site) + "</div>" +
+            (it.purpose ? '<p class="log-block-body">' + escHtml(it.purpose) + "</p>" : "") +
+            '<p class="log-block-body" style="margin-top:4px;">📍 ' +
+            (url ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:underline;">' + escHtml(it.address || "View on map") + " ↗</a>" : escHtml(it.address || "")) +
+            "</p></div></article>";
+        }
+        box.innerHTML = vh || '<p class="card-subtitle" style="margin:0;">No site check-ins in this range.</p>';
+      }
+
+      /* ---------- Excel (.xlsx) builder: no libraries, runs in the browser ---------- */
+      function crcTable() {
+        if (crcTable.t) return crcTable.t;
+        var t = [];
+        for (var n = 0; n < 256; n++) {
+          var c = n;
+          for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          t[n] = c >>> 0;
+        }
+        crcTable.t = t;
+        return t;
+      }
+      function crc32(bytes) {
+        var t = crcTable();
+        var c = 0xFFFFFFFF;
+        for (var i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+      }
+      function zipStore(files) {
+        var enc = new TextEncoder();
+        var parts = [], central = [], offset = 0;
+        function u16(n) { return [n & 255, (n >>> 8) & 255]; }
+        function u32(n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+        for (var i = 0; i < files.length; i++) {
+          var name = enc.encode(files[i].name);
+          var data = enc.encode(files[i].text);
+          var crc = crc32(data);
+          var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+          parts.push(new Uint8Array(head), name, data);
+          central.push({ name: name, crc: crc, size: data.length, offset: offset });
+          offset += head.length + name.length + data.length;
+        }
+        var cdStart = offset, cdSize = 0;
+        for (var j = 0; j < central.length; j++) {
+          var c = central[j];
+          var ch = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c.crc), u32(c.size), u32(c.size), u16(c.name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(c.offset));
+          parts.push(new Uint8Array(ch), c.name);
+          cdSize += ch.length + c.name.length;
+        }
+        parts.push(new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length), u32(cdSize), u32(cdStart), u16(0))));
+        return new Blob(parts, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      }
+      function xmlEsc(v) {
+        return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+      }
+      function colLetter(i) {
+        var s2 = "";
+        i++;
+        while (i > 0) { var m = (i - 1) % 26; s2 = String.fromCharCode(65 + m) + s2; i = Math.floor((i - 1) / 26); }
+        return s2;
+      }
+      /* sheets: [{ name, rows: [[cell,...]], widths: [n,...] }]; cell = value or { v: value, b: true (bold), m: true (money) } */
+      function makeXlsx(sheets) {
+        var files = [];
+        var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+        var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+        var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+        for (var i = 0; i < sheets.length; i++) {
+          var sh = sheets[i];
+          var nm = String(sh.name).replace(/[\[\]\*\?\/\\:]/g, "-").substring(0, 31);
+          ct += '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+          wb += '<sheet name="' + xmlEsc(nm) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+          rels += '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+          var x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
+          if (sh.widths && sh.widths.length) {
+            x += "<cols>";
+            for (var w = 0; w < sh.widths.length; w++) x += '<col min="' + (w + 1) + '" max="' + (w + 1) + '" width="' + sh.widths[w] + '" customWidth="1"/>';
+            x += "</cols>";
+          }
+          x += "<sheetData>";
+          for (var r = 0; r < sh.rows.length; r++) {
+            x += '<row r="' + (r + 1) + '">';
+            for (var c = 0; c < sh.rows[r].length; c++) {
+              var cell = sh.rows[r][c];
+              var val = cell, st = 0;
+              if (cell !== null && typeof cell === "object") { val = cell.v; st = cell.b ? 1 : (cell.m ? 2 : 0); }
+              if (val === null || val === undefined || val === "") continue;
+              var ref = colLetter(c) + (r + 1);
+              if (typeof val === "number" && isFinite(val)) x += '<c r="' + ref + '" s="' + st + '"><v>' + val + "</v></c>";
+              else x += '<c r="' + ref + '" s="' + st + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(val) + "</t></is></c>";
+            }
+            x += "</row>";
+          }
+          x += "</sheetData></worksheet>";
+          files.push({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", text: x });
+        }
+        ct += "</Types>";
+        wb += "</sheets></workbook>";
+        rels += '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+        var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+        var pkgRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+        files.unshift({ name: "xl/styles.xml", text: styles });
+        files.unshift({ name: "xl/_rels/workbook.xml.rels", text: rels });
+        files.unshift({ name: "xl/workbook.xml", text: wb });
+        files.unshift({ name: "_rels/.rels", text: pkgRels });
+        files.unshift({ name: "[Content_Types].xml", text: ct });
+        return zipStore(files);
+      }
+
+      function saveBlob(blob, filename) {
+        try {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 1500);
+          showToast("Downloaded " + filename);
+        } catch (e) {
+          showToast("Download is not available in this browser.");
+        }
+      }
+
+      function shareBlob(blob, filename) {
+        try {
+          var file = new File([blob], filename, { type: blob.type });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], title: filename }).catch(function (err) {
+              if (!err || err.name !== "AbortError") saveBlob(blob, filename);
+            });
+            return;
+          }
+        } catch (e) {}
+        saveBlob(blob, filename);
+      }
+
+      function canShareFiles() {
+        try {
+          var f = new File(["x"], "t.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          return !!(navigator.canShare && navigator.canShare({ files: [f] }));
+        } catch (e) { return false; }
+      }
+
+      function expenseWorkbook() {
+        var v = expenseView();
+        var range = (v.r.from ? prettyDate(v.r.from) : "start") + " to " + (v.r.to ? prettyDate(v.r.to) : "today");
+        var sum = [
+          [{ v: "Energy 360 Technologies - Expense Summary", b: true }],
+          ["Period: " + range + (v.r.emp ? " | Employee: " + v.r.emp : "") + (v.r.cat ? " | Category: " + v.r.cat : "")],
+          [],
+          [{ v: "By employee", b: true }],
+          [{ v: "Employee", b: true }, { v: "Entries", b: true }, { v: "Total (INR)", b: true }]
+        ];
+        var en = sortedKeys(v.byEmp);
+        for (var i = 0; i < en.length; i++) sum.push([en[i], v.byEmp[en[i]].n, { v: Math.round(v.byEmp[en[i]].sum * 100) / 100, m: true }]);
+        sum.push([{ v: "Grand total", b: true }, v.list.length, { v: Math.round(v.total * 100) / 100, m: true }]);
+        sum.push([]);
+        sum.push([{ v: "By category", b: true }]);
+        sum.push([{ v: "Category", b: true }, { v: "Entries", b: true }, { v: "Total (INR)", b: true }]);
+        var cn = sortedKeys(v.byCat);
+        for (var c = 0; c < cn.length; c++) sum.push([cn[c], v.byCat[cn[c]].n, { v: Math.round(v.byCat[cn[c]].sum * 100) / 100, m: true }]);
+        var det = [[{ v: "Date", b: true }, { v: "Employee", b: true }, { v: "Category", b: true }, { v: "Amount (INR)", b: true }, { v: "Description", b: true }, { v: "Site", b: true }, { v: "Status", b: true }, { v: "Submitted At", b: true }]];
+        var asc = v.list.slice().reverse();
+        for (var d = 0; d < asc.length; d++) {
+          var x = asc[d];
+          det.push([x.date, x.name, x.category, { v: x.amount, m: true }, x.description, x.site, x.status || "Submitted", x.serverTime]);
+        }
+        return makeXlsx([
+          { name: "Summary", rows: sum, widths: [28, 10, 16] },
+          { name: "Expenses", rows: det, widths: [12, 20, 20, 14, 36, 24, 12, 26] }
+        ]);
+      }
+
+      function visitWorkbook() {
+        var v = visitView();
+        var range = (v.r.from ? prettyDate(v.r.from) : "start") + " to " + (v.r.to ? prettyDate(v.r.to) : "today");
+        var sum = [
+          [{ v: "Energy 360 Technologies - Site Visit Summary", b: true }],
+          ["Period: " + range + (v.r.emp ? " | Employee: " + v.r.emp : "")],
+          [],
+          [{ v: "Employee", b: true }, { v: "Check-ins", b: true }, { v: "Distinct sites", b: true }, { v: "Days active", b: true }]
+        ];
+        var names = sortedKeys(v.byEmp);
+        for (var i = 0; i < names.length; i++) {
+          var e = v.byEmp[names[i]];
+          sum.push([names[i], e.n, Object.keys(e.sites).length, Object.keys(e.days).length]);
+        }
+        sum.push([{ v: "Total", b: true }, v.list.length, v.siteCount, ""]);
+        var det = [[{ v: "Date", b: true }, { v: "Employee", b: true }, { v: "Phone Time", b: true }, { v: "Server Time", b: true }, { v: "Site", b: true }, { v: "Purpose", b: true }, { v: "Address", b: true }, { v: "Accuracy (m)", b: true }, { v: "Map Link", b: true }]];
+        var asc = v.list.slice().reverse();
+        for (var d = 0; d < asc.length; d++) {
+          var x = asc[d];
+          var acc = Number(x.accuracy);
+          det.push([x.date, x.name, x.time, x.serverTime, x.site, x.purpose, x.address, (isFinite(acc) && x.accuracy !== "") ? acc : "", mapUrl(x.gps)]);
+        }
+        return makeXlsx([
+          { name: "Summary", rows: sum, widths: [26, 12, 16, 14] },
+          { name: "Check-ins", rows: det, widths: [12, 20, 12, 26, 26, 28, 50, 12, 46] }
+        ]);
+      }
+
+      function csvOf(headers, rows) {
+        function cell(v) { return '"' + String(v == null ? "" : v).split('"').join('""') + '"'; }
         var out = [headers.map(cell).join(",")];
         for (var i = 0; i < rows.length; i++) out.push(rows[i].map(cell).join(","));
-        downloadSafe("﻿" + out.join("\n"), name, "text/csv;charset=utf-8", name);
+        return "﻿" + out.join("\n");
+      }
+
+      function exportReport(kind, how) {
+        if (!FIELD_REPORT.loaded) { showToast("Load the data first (tap Refresh)."); return; }
+        var stamp = todayISO();
+        if (kind === "expenses") {
+          var ev = expenseView();
+          if (ev.list.length === 0) { showToast("Nothing to export in this range."); return; }
+          if (how === "csv") {
+            downloadSafe(csvOf(["Date", "Employee", "Category", "Amount", "Description", "Site", "Status", "Submitted At"], ev.list.map(function (x) { return [x.date, x.name, x.category, x.amount, x.description, x.site, x.status, x.serverTime]; })), "expenses-" + stamp + ".csv", "text/csv;charset=utf-8", "expenses.csv");
+            return;
+          }
+          var eb = expenseWorkbook();
+          if (how === "share") shareBlob(eb, "expenses-" + stamp + ".xlsx"); else saveBlob(eb, "expenses-" + stamp + ".xlsx");
+        } else {
+          var vv = visitView();
+          if (vv.list.length === 0) { showToast("Nothing to export in this range."); return; }
+          if (how === "csv") {
+            downloadSafe(csvOf(["Date", "Employee", "Phone Time", "Server Time", "Site", "Purpose", "Address", "Accuracy (m)", "Map Link", "GPS"], vv.list.map(function (x) { return [x.date, x.name, x.time, x.serverTime, x.site, x.purpose, x.address, x.accuracy, mapUrl(x.gps), x.gps]; })), "site-visits-" + stamp + ".csv", "text/csv;charset=utf-8", "site-visits.csv");
+            return;
+          }
+          var vb = visitWorkbook();
+          if (how === "share") shareBlob(vb, "site-visits-" + stamp + ".xlsx"); else saveBlob(vb, "site-visits-" + stamp + ".xlsx");
+        }
+      }
+
+      /* =================================================================== */
+      /* EDIT A SUBMITTED REPORT (work details only)                         */
+      /* =================================================================== */
+
+      function editShowError(msg) {
+        var b = byId("edit-error");
+        var t = byId("edit-error-text");
+        if (t) t.textContent = msg;
+        if (b) b.classList.remove("hidden");
+      }
+
+      function closeEditPanel() {
+        State.editId = "";
+        var p = byId("edit-panel");
+        if (p) p.classList.add("hidden");
+        var b = byId("edit-error");
+        if (b) b.classList.add("hidden");
+        var pin = byId("edit-pin");
+        if (pin) pin.value = "";
+      }
+
+      function renderEditCard() {
+        var box = byId("edit-list");
+        if (!box) return;
+        var name = currentEmployeeName();
+        if (!name) {
+          box.innerHTML = '<p class="card-subtitle" style="margin:0;">Select your name above to see your recent reports.</p>';
+          closeEditPanel();
+          return;
+        }
+        var key = name.trim().toLowerCase();
+        var todayStr = todayISO();
+        var mine = LOGS.filter(function (l) {
+          return l.status === "done" && String(l.employeeName).trim().toLowerCase() === key && l.date === todayStr;
+        });
+        if (State.editId) {
+          var still = false;
+          for (var q = 0; q < mine.length; q++) { if (mine[q].id === State.editId) still = true; }
+          if (!still) closeEditPanel();
+        }
+        if (mine.length === 0) {
+          box.innerHTML = '<p class="card-subtitle" style="margin:0;">You have no submitted report for today yet.</p>';
+          return;
+        }
+        var h = "";
+        for (var i = 0; i < mine.length && i < 10; i++) {
+          var l = mine[i];
+          h += '<div class="fw-item"><strong>' + escHtml(prettyDate(l.date)) + "</strong> • " +
+            escHtml(prettyTime12(l.loginTime)) + " – " + escHtml(prettyTime12(l.logoutTime)) +
+            (l.editedAt ? ' <span class="fw-chip">✏️ edited</span>' : "") +
+            (l.pending ? ' <span class="fw-chip wait">⏳ saving…</span>' : "") +
+            '<br><span style="color:var(--slate-500);">' + escHtml(String(l.activities || "").substring(0, 90)) + (String(l.activities || "").length > 90 ? "…" : "") + "</span>" +
+            '<br><button type="button" class="preset-btn" style="margin-top:6px;" data-edit-log="' + escHtml(l.id) + '">Edit</button></div>';
+        }
+        box.innerHTML = h;
+      }
+
+      function openEditPanel(id) {
+        var l = null;
+        for (var i = 0; i < LOGS.length; i++) { if (LOGS[i].id === id) { l = LOGS[i]; break; } }
+        if (!l) return;
+        State.editId = id;
+        var set = function (eid, v) { var e = byId(eid); if (e) e.value = v; };
+        set("edit-activities", l.activities || "");
+        set("edit-issues", l.issueDetails || "");
+        set("edit-tomorrow", l.tomorrowPlan || "");
+        set("edit-pin", "");
+        var sm = byId("edit-summary");
+        if (sm) sm.textContent = prettyDate(l.date) + " • " + prettyTime12(l.loginTime) + " – " + prettyTime12(l.logoutTime) + " (times stay as they are)";
+        var b = byId("edit-error"); if (b) b.classList.add("hidden");
+        var p = byId("edit-panel");
+        if (p) {
+          p.classList.remove("hidden");
+          try { p.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+        }
+      }
+
+      function saveEdit() {
+        if (State.gpsBusy) return;
+        var l = null;
+        for (var i = 0; i < LOGS.length; i++) { if (LOGS[i].id === State.editId) { l = LOGS[i]; break; } }
+        if (!l) { closeEditPanel(); return; }
+        var act = byId("edit-activities").value.trim();
+        var iss = byId("edit-issues").value.trim();
+        var tom = byId("edit-tomorrow").value.trim();
+        var pinEl = byId("edit-pin");
+        var pin = pinEl.value.trim();
+        if (!act) { editShowError("Activities cannot be empty."); return; }
+        if (!/^\d{4,6}$/.test(pin)) { editShowError("Please enter your PIN (4 to 6 digits)."); return; }
+        var btn = byId("btn-edit-save");
+        State.gpsBusy = true;
+        setBtnBusy(btn, true, "⏳ Checking PIN…");
+        verifyPin(l.employeeName, pin, function (ok, msg) {
+          State.gpsBusy = false;
+          setBtnBusy(btn, false);
+          if (!ok) { pinEl.value = ""; editShowError(msg); return; }
+          State.sessionPin = { name: l.employeeName, pin: pin };
+          /* only the work details change: times, GPS, addresses and status stay exactly as they were */
+          l.activities = act;
+          l.issueDetails = iss;
+          l.hasIssue = iss.length > 0;
+          l.tomorrowPlan = tom;
+          l.editedAt = new Date().toISOString();
+          l.pending = true;
+          persistLocalLogs();
+          postToSheet({ action: "edit_log", log: editPayload(l), pin: pin }, false, "edit");
+          closeEditPanel();
+          renderAll();
+          showToast("Changes saved. Confirming with the sheet…");
+        });
       }
 
       function renderTrackerTab() {
@@ -4087,24 +4692,19 @@
             flaggedCount++;
           }
         }
-        var avgMins = doneCount > 0 ? Math.round(totalMins / doneCount) : 0;
 
         var kSub = byId("kpi-submitted");
         var kPen = byId("kpi-pending");
-        var kAvg = byId("kpi-avg-shift");
         var kIss = byId("kpi-issues");
-        var kAvgSub = byId("kpi-avg-sub");
         var kIssSub = byId("kpi-issues-sub");
 
         if (kSub) kSub.textContent = rosterSubmitted + " / " + STAFF.length;
         if (kPen) kPen.textContent = String(pending);
         var kPenSub = byId("kpi-pending-sub");
         if (kPenSub) kPenSub.textContent = punchedStaff > 0 ? (punchedStaff + " punched in, EOD pending") : "Remaining";
-        if (kAvg) kAvg.textContent = formatDuration(avgMins);
         if (kIss) kIss.textContent = String(flaggedCount);
 
         var subLabel = (kpiDate === today) ? "Today's logs" : prettyDate(kpiDate);
-        if (kAvgSub) kAvgSub.textContent = subLabel;
         if (kIssSub) kIssSub.textContent = subLabel;
 
         var countPill = byId("mgr-staff-count-pill");
@@ -4192,6 +4792,7 @@
                   '<span class="log-name">' + escHtml(item.employeeName) + "</span>" +
                   '<span class="tag-pill">' + escHtml(prettyDate(item.date)) + "</span>" +
                   '<span class="tag-pill shift">⏱️ ' + escHtml(shift) + "</span>" +
+                  (item.editedAt ? '<span class="tag-pill">✏️ Edited</span>' : "") +
                 "</div>" +
                 '<span class="status-tag ' + (isOpen ? "ok" : (flagged ? "warn" : "ok")) + '">' +
                   (isOpen ? "🟢 Punched In • EOD Pending" : (flagged ? "⚠️ Needs Support" : "✅ Smooth Day")) +
@@ -4499,7 +5100,22 @@
           btnResetToday.onclick = function () {
             var d = byId("eod-date");
             if (d) d.value = todayISO();
-            showToast("Date reset to Today.");
+            clearFormErrors();
+            updateFormMode();
+            showToast("Date set to Today.");
+          };
+        }
+        var eodDateEl = byId("eod-date");
+        if (eodDateEl) {
+          eodDateEl.max = todayISO();
+          eodDateEl.onchange = eodDateEl.oninput = function () {
+            if (!eodDateEl.value) eodDateEl.value = todayISO();
+            if (eodDateEl.value > todayISO()) {
+              eodDateEl.value = todayISO();
+              showToast("Future dates are not allowed.");
+            }
+            clearFormErrors();
+            updateFormMode();
           };
         }
 
@@ -4575,17 +5191,20 @@
         if (fwCheckBtn) fwCheckBtn.onclick = fwCheckIn;
         var fwExpBtn = byId("btn-fw-expense");
         if (fwExpBtn) fwExpBtn.onclick = fwAddExpense;
-        var fwRefresh = byId("btn-fw-refresh");
-        if (fwRefresh) fwRefresh.onclick = function () { FIELD_REPORT.loaded = false; loadFieldReport(); renderFieldReport(); };
-        var fwExV = byId("btn-fw-export-visits");
-        if (fwExV) fwExV.onclick = function () { exportFieldCsv("visits"); };
-        var fwExE = byId("btn-fw-export-exp");
-        if (fwExE) fwExE.onclick = function () { exportFieldCsv("expenses"); };
-        var fwFilters = ["fw-from", "fw-to", "fw-emp-filter"];
-        for (var ff = 0; ff < fwFilters.length; ff++) {
-          var fe = byId(fwFilters[ff]);
-          if (fe) fe.onchange = renderFieldReport;
+        var repRefresh = function () { FIELD_REPORT.loaded = false; loadFieldReport(); renderExpensesReport(); renderVisitsReport(); };
+        var bx = byId("btn-ex-refresh"); if (bx) bx.onclick = repRefresh;
+        var bv = byId("btn-vs-refresh"); if (bv) bv.onclick = repRefresh;
+        var bind = function (id, kind, how) { var el = byId(id); if (el) el.onclick = function () { exportReport(kind, how); }; };
+        bind("btn-ex-xlsx", "expenses", "xlsx"); bind("btn-ex-share", "expenses", "share"); bind("btn-ex-csv", "expenses", "csv");
+        bind("btn-vs-xlsx", "visits", "xlsx"); bind("btn-vs-share", "visits", "share"); bind("btn-vs-csv", "visits", "csv");
+        if (canShareFiles()) {
+          var sx = byId("btn-ex-share"); if (sx) sx.style.display = "";
+          var sv = byId("btn-vs-share"); if (sv) sv.style.display = "";
         }
+        var repIds = ["ex-from", "ex-to", "ex-emp", "ex-cat"];
+        for (var r1 = 0; r1 < repIds.length; r1++) { var e1 = byId(repIds[r1]); if (e1) e1.onchange = renderExpensesReport; }
+        var repIds2 = ["vs-from", "vs-to", "vs-emp"];
+        for (var r2 = 0; r2 < repIds2.length; r2++) { var e2 = byId(repIds2[r2]); if (e2) e2.onchange = renderVisitsReport; }
         var fwSel = byId("fw-staff-select");
         if (fwSel) fwSel.onchange = function () { fwClearErrors(); renderFieldTab(); };
         var fwPin = byId("fw-pin");
@@ -4596,6 +5215,13 @@
             fwClearErrors();
           };
         }
+
+        var editSave = byId("btn-edit-save");
+        if (editSave) editSave.onclick = saveEdit;
+        var editCancel = byId("btn-edit-cancel");
+        if (editCancel) editCancel.onclick = closeEditPanel;
+        var editPin = byId("edit-pin");
+        if (editPin) editPin.oninput = function () { editPin.value = editPin.value.replace(/[^0-9]/g, ""); };
 
         var btnGenPins = byId("btn-gen-pins");
         if (btnGenPins) btnGenPins.onclick = generateMissingPins;
@@ -4912,6 +5538,18 @@
             return;
           }
 
+          var presetRep = target.closest("[data-rep-preset]");
+          if (presetRep) {
+            applyPreset(presetRep.getAttribute("data-rep-preset"));
+            return;
+          }
+
+          var editNode = target.closest("[data-edit-log]");
+          if (editNode) {
+            openEditPanel(editNode.getAttribute("data-edit-log"));
+            return;
+          }
+
           var retryNode = target.closest("[data-fw-retry]");
           if (retryNode) {
             fwRetry(retryNode.getAttribute("data-fw-kind"), retryNode.getAttribute("data-fw-retry"));
@@ -4962,7 +5600,9 @@
 
         var today = todayISO();
         var eodDate = byId("eod-date");
-        if (eodDate) eodDate.value = today;
+        if (eodDate) { eodDate.value = today; eodDate.max = today; }
+        State.dayStamp = today;
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) { updatePunchClock(); pullFromSheet(false); } });
 
         var filterDate = byId("filter-date");
         if (filterDate) filterDate.value = today;
