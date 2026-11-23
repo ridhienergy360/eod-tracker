@@ -167,7 +167,6 @@ textarea{min-height:92px;resize:vertical}
   <div class="hello"><h1 id="hm-hello"></h1><p id="hm-date"></p></div>
   <div id="hm-leave"></div>
   <div id="hm-tasks"></div>
-    <div id="hm-alerts"></div>
   <div id="hm-punch" class="card hero hidden">
     <div class="hero-clock" id="punch-clock"></div>
     <p class="hero-sub">Ready to start your day?</p>
@@ -1217,7 +1216,6 @@ function loadMyData(cb) {
     var sp = d.isSupervisor === true;
     if (sp !== SUPER) { SUPER = sp; SafeStorage.set("energy360_super_v1:" + SESSION.name.toLowerCase(), sp ? "1" : "0"); show("mode-btn", SUPER); setText("mode-btn", "🛠 Manage"); }
     if (CAN_ASSIGN) loadManagerData();
-    if (d.ntfyTopic) { UI.topic = d.ntfyTopic; SafeStorage.set("energy360_ntfy_topic_v1:" + SESSION.name.toLowerCase(), d.ntfyTopic); }
     DATA.tasks = mergeMine(DATA.tasks, d.tasks || [], function (a, b) { return a.updatedAt === b.updatedAt; });
     DATA.leaves = mergeMine(DATA.leaves, d.leaves || [], function (a, b) { return a.status === b.status; });
     setSync("ok");
@@ -1269,23 +1267,6 @@ function renderHomeTasks() {
   setHtml("hm-tasks", html);
 }
 
-function alertsKey() { return "energy360_alerts_done_v1:" + SESSION.name.toLowerCase(); }
-function myTopic() { return UI.topic || SafeStorage.get("energy360_ntfy_topic_v1:" + SESSION.name.toLowerCase()) || ""; }
-function renderAlertsCard() {
-  var topic = myTopic();
-  if (!topic || SafeStorage.get(alertsKey()) === "1" ) { setHtml("hm-alerts", ""); return; }
-  setHtml("hm-alerts",
-    '<div class="card"><h2 style="margin:0 0 6px;">🔔 Get task alerts on your phone</h2>' +
-    '<p class="muted" style="margin:0 0 8px;">One-time setup (2 minutes). You will get a notification the moment your manager assigns you a task.</p>' +
-    '<ol style="margin:0 0 10px 18px;padding:0;line-height:1.55;">' +
-    '<li>Install the free <strong>ntfy</strong> app (App Store or Play Store).</li>' +
-    '<li>Open it, tap <strong>+</strong>, and subscribe to this code:<div class="note info" style="margin:6px 0;font-weight:800;word-break:break-all;user-select:all;">' + escHtml(topic) + '</div></li>' +
-    '<li>Allow notifications when asked.</li></ol>' +
-    '<div class="btn-row"><button type="button" class="btn btn-outline btn-sm" data-act="copy-topic"><span>Copy code</span></button>' +
-    '<a class="btn btn-outline btn-sm" href="ntfy://ntfy.sh/' + escHtml(topic) + '" style="text-decoration:none;"><span>Open in ntfy</span></a></div>' +
-    '<button type="button" class="btn btn-dark btn-sm" style="margin-top:10px;" data-act="alerts-done"><span>✓ Done, hide this</span></button></div>');
-}
-
 function renderHome() {
   if (!SESSION || IS_ADMIN || !byId("hm-hello")) return;
   var name = SESSION.name, today = todayISO();
@@ -1294,7 +1275,6 @@ function renderHome() {
   var lv = myLeaveToday();
   setHtml("hm-leave", lv ? '<div class="note ok">🌴 You are on approved leave today.</div>' : "");
   renderHomeTasks();
-  renderAlertsCard();
 
   var open = findOpenPunch(name);
   var done = latestDone(name, today);
@@ -1571,7 +1551,7 @@ function renderTasks() {
   if (ae && box.contains(ae)) return;   /* don't wipe what someone is typing */
   var open = openTasks();
   var done = DATA.tasks.filter(function (t) { return t.status === "Done"; }).sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); }).slice(0, 8);
-  var foot = '<p style="text-align:center;margin:14px 0 0;"><button type="button" class="preset-btn" data-act="alerts-show">🔔 Phone alert setup</button></p>';
+  var foot = '';
   if (!DATA.tasks.length) { box.innerHTML = '<div class="card"><p class="muted" style="margin:0;">No tasks assigned to you right now.</p></div>' + foot; return; }
   function card(t) {
     var d = UI.taskDraft[t.id] || {};
@@ -2568,9 +2548,6 @@ function onClick(e) {
     case "refresh": pullFromSheet(); refreshData(); showToast("Refreshing…"); break;
     case "tab": showTab(n.getAttribute("data-tab")); break;
     case "close-modal": closeModal(); break;
-    case "copy-topic": copyText(myTopic()); break;
-    case "alerts-done": SafeStorage.set(alertsKey(), "1"); renderAlertsCard(); showToast("Done. Find it again under Tasks."); break;
-    case "alerts-show": SafeStorage.set(alertsKey(), "0"); renderAlertsCard(); showTab("home"); break;
     case "mode-switch": switchMode(); break;
     case "goto-tasks": showTab("tasks"); break;
     case "punch-in": punchIn(); break;
