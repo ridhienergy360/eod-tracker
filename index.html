@@ -352,6 +352,7 @@ textarea{min-height:92px;resize:vertical}
       <input type="date" id="ex-to" class="input-ctrl" />
       <select id="ex-emp" class="select-ctrl"><option value="">All employees</option></select>
       <select id="ex-cat" class="select-ctrl"><option value="">All categories</option><option>Travel / Fuel</option><option>Food</option><option>Accommodation</option><option>Parking / Toll</option><option>Materials / Purchase</option><option>Other</option></select>
+      <select id="ex-status" class="select-ctrl"><option value="">All statuses</option><option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option></select>
     </div>
     <button type="button" id="btn-ex-refresh" class="btn btn-outline" style="margin-top:10px;"><span>↻ Refresh</span></button>
     <div class="kpi-grid" style="margin-top:12px;">
@@ -444,7 +445,8 @@ var IS_ADMIN = false;
 var SESSION = null;
 var CAN_ASSIGN = false;
 var SUPER = false;
-var DATA = { tasks: [], leaves: [], mgr: [] };
+var HR = false;
+var DATA = { tasks: [], leaves: [], mgr: [], exp: [] };
 var FIELD = { visits: [], expenses: [] };
 var FIELD_REPORT = { visits: [], expenses: [], loaded: false, loading: false };
 var UI = { tab: "home", busy: false, issueFlag: "smooth", forcePunch: false, eodFor: "", taskDraft: {}, assignees: {}, ahAll: false, ahIssues: false, delArm: "", signOutBusy: false };
@@ -651,6 +653,12 @@ function post(payload) {
     }).then(function () { setSync("ok"); }).catch(function () { setSync("err"); showToast("No internet. Please try again."); });
   } catch (e) { setSync("err"); return { then: function () {} }; }
 }
+/* true only while someone is typing inside a box (buttons don't count) */
+function typingIn(box) {
+  var ae = document.activeElement;
+  return !!(ae && box && box.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+}
+function canDecide() { return isRealAdmin() || SUPER; }
 function isRealAdmin() { return !!(SESSION && SESSION.role === "admin"); }
 /* Admin = admin code. Supervisor (manage mode) = their own name + PIN. */
 function adminQ(params) {
@@ -914,7 +922,7 @@ function signOut() {
   SafeStorage.set(KEYS.SESS, "");
   if (IS_ADMIN) { SafeStorage.set(KEYS.ADMIN_FLAG, "0"); SafeStorage.set(KEYS.ADMIN_CODE, ""); }
   clearInterval(pollTimer);
-  DATA = { tasks: [], leaves: [], mgr: [] };
+  DATA = { tasks: [], leaves: [], mgr: [], exp: [] };
   FIELD_REPORT = { visits: [], expenses: [], loaded: false, loading: false };
   showLogin("", false);
 }
@@ -924,22 +932,24 @@ function startEmployee(name, pin) {
   IS_ADMIN = false;
   CAN_ASSIGN = SafeStorage.get("energy360_canassign_v1:" + name.toLowerCase()) === "1";
   SUPER = SafeStorage.get("energy360_super_v1:" + name.toLowerCase()) === "1";
+  HR = SafeStorage.get("energy360_hr_v1:" + name.toLowerCase()) === "1";
   enterApp();
 }
 function startAdmin() {
   SESSION = { role: "admin" };
-  IS_ADMIN = true; CAN_ASSIGN = false; SUPER = false;
+  IS_ADMIN = true; CAN_ASSIGN = false; SUPER = false; HR = false;
   enterApp();
 }
 
 /* ---------- app shell ---------- */
 var TABS_EMP = [["home", "🏠", "Home"], ["leave", "🌴", "Leave"], ["tasks", "✅", "Tasks"], ["visits", "📍", "Visits"], ["expenses", "💰", "Expenses"]];
 var TABS_SUP = [["home", "📊", "Today"], ["tasks", "✅", "Tasks"], ["leave", "🌴", "Leaves"], ["expenses", "💰", "Expenses"]];
+var TABS_HR = [["home", "📊", "Attendance"], ["leave", "🌴", "Leaves"]];
 var TAB_ASSIGN = ["assign", "📝", "Assign"];
 var TABS_ADM = [["home", "📊", "Today"], ["tasks", "✅", "Tasks"], ["leave", "🌴", "Leaves"], ["visits", "📍", "Visits"], ["expenses", "💰", "Expenses"], ["team", "👥", "Team"]];
 
 function tabsNow() {
-  if (IS_ADMIN) return isRealAdmin() ? TABS_ADM : TABS_SUP;
+  if (IS_ADMIN) return isRealAdmin() ? TABS_ADM : (SUPER ? TABS_SUP : TABS_HR);
   if (!CAN_ASSIGN) return TABS_EMP;
   var t = TABS_EMP.slice(); t.splice(3, 0, TAB_ASSIGN); return t;
 }
@@ -961,10 +971,10 @@ function buildShell() {
     nav += '<button type="button" class="nav-btn" data-act="tab" data-tab="' + tabs[i][0] + '" id="nav-' + tabs[i][0] + '"><span class="ic">' + tabs[i][1] + "</span><span>" + tabs[i][2] + '</span><span class="nav-badge hidden" id="badge-' + tabs[i][0] + '"></span></button>';
   }
   byId("nav").innerHTML = nav;
-  setText("role-label", isRealAdmin() ? "Admin" : (IS_ADMIN ? "Manager view" : "Team"));
+  setText("role-label", isRealAdmin() ? "Admin" : (IS_ADMIN ? (SUPER ? "Manager view" : "HR view") : "Team"));
   setText("user-btn", isRealAdmin() ? "Sign out" : firstName(SESSION.name) + " · Sign out");
-  show("mode-btn", SUPER && !isRealAdmin());
-  setText("mode-btn", IS_ADMIN ? "👤 My work" : "🛠 Manage");
+  show("mode-btn", (SUPER || HR) && !isRealAdmin());
+  setText("mode-btn", modeBtnText());
   bindPanelEvents();
 }
 
@@ -993,10 +1003,12 @@ function enterApp() {
   pollTimer = setInterval(function () { if (!document.hidden) { pullFromSheet(); refreshData(); } }, 60000);
 }
 
+function modeBtnText() { return IS_ADMIN ? "👤 My work" : (SUPER ? "🛠 Manage" : "📋 HR view"); }
+
 function switchMode() {
-  if (!SUPER || isRealAdmin()) return;
+  if (!(SUPER || HR) || isRealAdmin()) return;
   IS_ADMIN = !IS_ADMIN;
-  DATA = { tasks: [], leaves: [], mgr: [] };
+  DATA = { tasks: [], leaves: [], mgr: [], exp: [] };
   UI.tab = "home"; UI.forcePunch = false;
   buildShell(); showTab("home");
   refreshData(); pullFromSheet();
@@ -1214,7 +1226,14 @@ function loadMyData(cb) {
       var keep = UI.tab; buildShell(); UI.tab = keep === "assign" && !ca ? "home" : keep; showTab(UI.tab || "home");
     }
     var sp = d.isSupervisor === true;
-    if (sp !== SUPER) { SUPER = sp; SafeStorage.set("energy360_super_v1:" + SESSION.name.toLowerCase(), sp ? "1" : "0"); show("mode-btn", SUPER); setText("mode-btn", "🛠 Manage"); }
+    var hh = d.isHR === true;
+    if (sp !== SUPER || hh !== HR) {
+      SUPER = sp; HR = hh;
+      SafeStorage.set("energy360_super_v1:" + SESSION.name.toLowerCase(), sp ? "1" : "0");
+      SafeStorage.set("energy360_hr_v1:" + SESSION.name.toLowerCase(), hh ? "1" : "0");
+      show("mode-btn", SUPER || HR); setText("mode-btn", modeBtnText());
+    }
+    DATA.exp = d.expenses || [];
     if (CAN_ASSIGN) loadManagerData();
     DATA.tasks = mergeMine(DATA.tasks, d.tasks || [], function (a, b) { return a.updatedAt === b.updatedAt; });
     DATA.leaves = mergeMine(DATA.leaves, d.leaves || [], function (a, b) { return a.status === b.status; });
@@ -1544,11 +1563,17 @@ function renderLeaves() {
 }
 
 /* ---------- TASKS (employee) ---------- */
+function notesHtml(t) {
+  if (!t.notes) return "";
+  var lines = String(t.notes).split("\n"), h = "";
+  for (var i = 0; i < lines.length; i++) if (lines[i].trim()) h += "<div>💬 " + escHtml(lines[i]) + "</div>";
+  return '<div class="note info" style="margin:10px 0 0;font-size:13.5px;"><strong>Notes from your manager</strong>' + h + "</div>";
+}
+
 function renderTasks() {
   var box = byId("tk-list");
   if (!box) return;
-  var ae = document.activeElement;
-  if (ae && box.contains(ae)) return;   /* don't wipe what someone is typing */
+  if (typingIn(box)) return;   /* don't wipe what someone is typing */
   var open = openTasks();
   var done = DATA.tasks.filter(function (t) { return t.status === "Done"; }).sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); }).slice(0, 8);
   var foot = '';
@@ -1562,6 +1587,7 @@ function renderTasks() {
     for (var i = 0; i < statuses.length; i++) seg += '<button type="button" data-act="tk-status" data-id="' + escHtml(t.id) + '" data-val="' + statuses[i][0] + '" class="' + (st === statuses[i][0] ? "on " + statuses[i][1] : "") + '">' + statuses[i][0] + "</button>";
     return '<div class="task" data-task="' + escHtml(t.id) + '"><div class="top"><div class="ttl">' + (t.priority === "High" ? "🔥 " : "") + escHtml(t.title) + "</div>" + dueChip(t) + "</div>" +
       (t.details ? '<p class="muted" style="margin:6px 0 0;white-space:pre-wrap;">' + escHtml(t.details) + "</p>" : "") +
+      notesHtml(t) +
       '<div class="seg">' + seg + "</div>" +
       '<textarea data-comment="' + escHtml(t.id) + '" rows="2" placeholder="Add a comment (optional)">' + escHtml(cm) + "</textarea>" +
       '<div class="pill-row" style="margin-top:10px;"><button type="button" class="btn btn-dark btn-sm" data-act="tk-save" data-id="' + escHtml(t.id) + '"><span>Save update</span></button>' +
@@ -1637,18 +1663,38 @@ function renderVisits() {
   box.innerHTML = h || '<p class="muted" style="margin:0 4px;">No check-ins yet today.</p>';
 }
 
+function expStatusChip(x) {
+  var st = x.status;
+  if (st === "sending") return '<span class="fw-chip wait">⏳ Sending…</span>';
+  if (st === "failed") return '<span class="fw-chip warn">⚠️ Not saved</span> <button type="button" class="preset-btn" data-act="fw-retry" data-id="' + escHtml(x.id) + '">Retry</button>';
+  if (st === "Approved") return '<span class="fw-chip ok">✅ Approved' + (x.decidedBy ? " by " + escHtml(x.decidedBy) : "") + "</span>";
+  if (st === "Rejected") return '<span class="fw-chip warn">✖ Rejected' + (x.decidedBy ? " by " + escHtml(x.decidedBy) : "") + "</span>";
+  return '<span class="fw-chip wait">⏳ Pending approval</span>';
+}
+
+function myExpenseList() {
+  var seen = {}, out = [], i;
+  for (i = 0; i < DATA.exp.length; i++) { seen[DATA.exp[i].id] = true; out.push(DATA.exp[i]); }
+  for (i = 0; i < FIELD.expenses.length; i++) {
+    var x = FIELD.expenses[i];
+    if (sameName(x.employeeName, SESSION.name) && !seen[x.id]) out.push({ id: x.id, date: x.date, category: x.category, amount: x.amount, description: x.description, site: x.site, status: x.status === "failed" ? "failed" : (x.status === "sending" ? "sending" : "Submitted"), decidedBy: "", note: "", serverTime: new Date(x.createdAtMs || 0).toISOString() });
+  }
+  out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(b.serverTime || "").localeCompare(String(a.serverTime || "")); });
+  return out.slice(0, 15);
+}
+
 function renderExpenses() {
   var box = byId("xp-list");
   if (!box) return;
   if (!val("xp-date")) setVal("xp-date", todayISO());
-  var list = myField(FIELD.expenses), total = 0, h = "";
+  var list = myExpenseList(), total = 0, h = "", t = todayISO();
   for (var i = 0; i < list.length; i++) {
     var x = list[i];
-    total += Number(x.amount) || 0;
-    h += '<div class="fw-item">🧾 <strong>' + escHtml(x.category) + "</strong> · " + escHtml(formatINR(x.amount)) + (x.description ? "<br>" + escHtml(x.description) : "") + (x.site ? " (" + escHtml(x.site) + ")" : "") + "<br>" + fieldChip(x) + "</div>";
+    if (x.date === t && x.status !== "Rejected") total += Number(x.amount) || 0;
+    h += '<div class="fw-item">🧾 <strong>' + escHtml(x.category) + "</strong> · " + escHtml(formatINR(x.amount)) + " · " + escHtml(prettyDate(x.date)) + (x.description ? "<br>" + escHtml(x.description) : "") + (x.site ? " (" + escHtml(x.site) + ")" : "") + "<br>" + expStatusChip(x) + (x.note ? '<br><span class="muted">💬 ' + escHtml(x.note) + "</span>" : "") + "</div>";
   }
-  if (list.length) h += '<p style="margin:6px 4px 0;font-weight:800;">Today: ' + escHtml(formatINR(total)) + "</p>";
-  box.innerHTML = h || '<p class="muted" style="margin:0 4px;">No expenses yet today.</p>';
+  if (total > 0) h += '<p style="margin:6px 4px 0;font-weight:800;">Today: ' + escHtml(formatINR(total)) + "</p>";
+  box.innerHTML = h || '<p class="muted" style="margin:0 4px;">No expenses yet.</p>';
 }
 
 function checkIn() {
@@ -1855,8 +1901,7 @@ function renderAdminTasks() {
   fillEmpSelect("at-f-emp"); 
 
   var list = byId("at-list");
-  var ae = document.activeElement;
-  if (ae && list && list.contains(ae)) return;
+  if (typingIn(list)) return;
   var fe = val("at-f-emp"), fs = val("at-f-status");
   var items = taskSource().filter(function (t) { return (!fe || sameName(t.assignedTo, fe)) && (!fs || t.status === fs); });
   items.sort(function (a, b) {
@@ -1870,7 +1915,9 @@ function renderAdminTasks() {
     out += '<div class="task"><div class="top"><div class="ttl">' + (t.priority === "High" ? "🔥 " : "") + escHtml(t.title) + '</div><span class="chip ' + statusClass(t.status) + '">' + escHtml(t.status) + "</span></div>" +
       '<div class="pill-row" style="margin-top:6px;"><span class="chip info">👤 ' + escHtml(t.assignedTo) + "</span>" + dueChip(t) + "</div>" +
       (t.details ? '<p class="muted" style="margin:8px 0 0;white-space:pre-wrap;">' + escHtml(t.details) + "</p>" : "") +
-      (t.comment ? '<p class="note info" style="margin:10px 0 0;">💬 ' + escHtml(t.comment) + "</p>" : "") +
+      (t.comment ? '<p class="note info" style="margin:10px 0 0;">💬 Employee: ' + escHtml(t.comment) + "</p>" : "") +
+      (t.notes ? '<div class="note" style="margin:10px 0 0;font-size:13.5px;"><strong>Notes</strong>' + String(t.notes).split("\n").map(function (ln) { return ln.trim() ? "<div>💬 " + escHtml(ln) + "</div>" : ""; }).join("") + "</div>" : "") +
+      '<div style="display:flex;gap:8px;margin-top:10px;"><input type="text" id="tn-' + escHtml(t.id) + '" class="input-ctrl" style="flex:1;" maxlength="300" placeholder="Add a note for the employee" /><button type="button" class="btn btn-dark btn-sm" data-act="task-note" data-id="' + escHtml(t.id) + '"><span>Send</span></button></div>' +
       (t.updatedAt ? '<p class="muted" style="margin:6px 0 0;font-size:12.5px;">Updated ' + escHtml(new Date(t.updatedAt).toLocaleString()) + "</p>" : "") +
       '<button type="button" class="btn btn-sm ' + (UI.delArm === t.id ? "btn-danger" : "btn-outline") + '" style="margin-top:10px;" data-act="at-del" data-id="' + escHtml(t.id) + '"><span>' + (UI.delArm === t.id ? "Tap again to delete" : "Delete") + "</span></button></div>";
   }
@@ -1912,6 +1959,30 @@ function assignTask() {
   function () { showToast("⚠️ Task not confirmed in the sheet. Check the admin code and your internet."); });
 }
 
+function sendTaskNote(id) {
+  var inp = byId("tn-" + id), text = inp ? inp.value.trim() : "";
+  if (!text) { showToast("Type a note first."); return; }
+  var src = taskSource(), t = null;
+  for (var i = 0; i < src.length; i++) if (src[i].id === id) { t = src[i]; break; }
+  if (!t) return;
+  var who = isRealAdmin() ? "Admin" : SESSION.name;
+  var line = new Date().toLocaleString() + " | " + who + ": " + text;
+  var before = t.notes || "";
+  t.notes = (before ? before + "\n" : "") + line;
+  if (inp) { inp.value = ""; inp.blur(); }
+  if (IS_ADMIN) postAdmin({ action: "comment_task", id: id, text: text });
+  else postMine({ action: "comment_task", id: id, text: text, employeeName: SESSION.name });
+  renderAll();
+  confirmSave(function (cb) {
+    execGet(IS_ADMIN ? adminQ({ action: "adminData" }) : { action: "managerData", name: SESSION.name, pin: SESSION.pin }, function (d) {
+      var ok = false;
+      if (d && d.ok && d.tasks) for (var k = 0; k < d.tasks.length; k++) if (d.tasks[k].id === id && String(d.tasks[k].notes || "").indexOf(who + ": " + text) >= 0) ok = true;
+      cb(ok);
+    });
+  }, function () { refreshData(); showToast("Note added."); },
+  function () { t.notes = before; renderAll(); showToast("⚠️ Note not confirmed. Check your internet and try again."); });
+}
+
 function deleteTask(id) {
   if (UI.delArm !== id) {
     UI.delArm = id; renderAdminTasks();
@@ -1940,11 +2011,10 @@ function renderAdminLeaves() {
   var pbox = byId("al-pending");
   if (!pbox) return;
   fillEmpSelect("al-f-emp");
-  var ae = document.activeElement;
-  if (ae && (pbox.contains(ae))) return;
+  if (typingIn(pbox)) return;
   var pend = DATA.leaves.filter(function (l) { return l.status === "Pending"; }).sort(function (a, b) { return String(a.from).localeCompare(String(b.from)); });
   var h = "";
-  for (var i = 0; i < pend.length; i++) h += leaveCardHtml(pend[i], true);
+  for (var i = 0; i < pend.length; i++) h += leaveCardHtml(pend[i], canDecide());
   pbox.innerHTML = h || '<div class="note ok">Nothing waiting. All caught up.</div>';
   var fe = val("al-f-emp"), fs = val("al-f-status");
   var all = DATA.leaves.filter(function (l) { return (!fe || sameName(l.name, fe)) && (!fs || l.status === fs) && l.status !== "Pending"; }).sort(function (a, b) { return String(b.appliedAt).localeCompare(String(a.appliedAt)); });
@@ -1990,6 +2060,53 @@ function leavesWorkbook() {
   var det = [[{ v: "Employee", b: true }, { v: "Type", b: true }, { v: "From", b: true }, { v: "To", b: true }, { v: "Days", b: true }, { v: "Status", b: true }, { v: "Reason", b: true }, { v: "Admin note", b: true }, { v: "Applied at", b: true }, { v: "Decided at", b: true }]];
   for (var d = 0; d < list.length; d++) { var x = list[d]; det.push([x.name, x.type, x.from, x.to, x.days, x.status, x.reason, x.adminNote, x.appliedAt, x.decidedAt]); }
   return makeXlsx([{ name: "Summary", rows: sum, widths: [26, 12, 16, 10] }, { name: "Requests", rows: det, widths: [20, 16, 12, 12, 8, 12, 36, 30, 26, 26] }]);
+}
+
+/* ---------- Expense decisions (admin + supervisor) ---------- */
+function expItem(id) {
+  for (var i = 0; i < FIELD_REPORT.expenses.length; i++) if (FIELD_REPORT.expenses[i].id === id) return FIELD_REPORT.expenses[i];
+  return null;
+}
+
+function decideExpense(id, dec) {
+  var x = expItem(id);
+  if (!x || !canDecide()) return;
+  var nEl = byId("ex-note-" + id), note = nEl ? nEl.value.trim() : "";
+  var prev = { status: x.status, decidedBy: x.decidedBy, note: x.note };
+  x.status = dec; x.decidedBy = isRealAdmin() ? "Admin" : SESSION.name; x.note = note;
+  postAdmin({ action: "decide_expense", id: id, decision: dec, note: note });
+  var ae = document.activeElement; if (ae && ae.blur) ae.blur();
+  renderExpensesReport();
+  confirmSave(function (cb) {
+    execGet(adminQ({ action: "fieldData" }), function (d) {
+      var ok = false;
+      if (d && d.ok && d.expenses) for (var j = 0; j < d.expenses.length; j++) if (d.expenses[j].id === id && d.expenses[j].status === dec) ok = true;
+      cb(ok);
+    });
+  }, function () { showToast(dec === "Approved" ? "Expense approved." : "Expense rejected."); },
+  function () { x.status = prev.status; x.decidedBy = prev.decidedBy; x.note = prev.note; renderExpensesReport(); showToast("⚠️ Not confirmed in the sheet. Please try again."); });
+}
+
+function deleteExpense(id) {
+  var key = "exp:" + id;
+  if (UI.delArm !== key) {
+    UI.delArm = key; renderExpensesReport();
+    setTimeout(function () { if (UI.delArm === key) { UI.delArm = ""; renderExpensesReport(); } }, 4000);
+    return;
+  }
+  UI.delArm = "";
+  var keep = FIELD_REPORT.expenses.slice();
+  FIELD_REPORT.expenses = FIELD_REPORT.expenses.filter(function (x) { return x.id !== id; });
+  postAdmin({ action: "delete_expense", id: id });
+  renderExpensesReport();
+  confirmSave(function (cb) {
+    execGet(adminQ({ action: "fieldData" }), function (d) {
+      var gone = false;
+      if (d && d.ok && d.expenses) { gone = true; for (var j = 0; j < d.expenses.length; j++) if (d.expenses[j].id === id) gone = false; }
+      cb(gone);
+    });
+  }, function () { showToast("Entry deleted."); },
+  function () { FIELD_REPORT.expenses = keep; renderExpensesReport(); showToast("⚠️ Delete not confirmed. The entry was restored."); });
 }
 
 /* ---------- Team ---------- */
@@ -2155,13 +2272,16 @@ function generatePins() {
 
       function sortedKeys(obj) { return Object.keys(obj).sort(); }
 
+      function expStat(x) { return (!x.status || x.status === "Submitted") ? "Pending" : x.status; }
       function expenseView() {
         var r = repRange("ex");
-        var list = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r); });
+        var stF = byId('ex-status') ? byId('ex-status').value : '';
+        var list = FIELD_REPORT.expenses.filter(function (x) { return inRange(x, r) && (!stF || expStat(x) === stF); });
         list.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(b.serverTime).localeCompare(String(a.serverTime)); });
         var total = 0, byEmp = {}, byCat = {};
         for (var i = 0; i < list.length; i++) {
           var x = list[i];
+          if (x.status === 'Rejected') continue;
           total += x.amount;
           byEmp[x.name] = byEmp[x.name] || { n: 0, sum: 0 };
           byEmp[x.name].n++; byEmp[x.name].sum += x.amount;
@@ -2174,6 +2294,7 @@ function generatePins() {
       function renderExpensesReport() {
         var box = byId("ex-list");
         if (!box) return;
+        if (typingIn(box)) return;
         initRepFilters("ex", monthStartISO());
         if (!FIELD_REPORT.loaded) {
           box.innerHTML = '<p class="card-subtitle" style="margin:0;">' + (FIELD_REPORT.loading ? "Loading…" : "Tap Refresh to load.") + "</p>";
@@ -2202,12 +2323,19 @@ function generatePins() {
 
         var xh = "";
         for (var b = 0; b < v.list.length; b++) {
-          var x = v.list[b];
-          xh += '<div class="fw-item"><strong>' + escHtml(x.name) + "</strong> • " + escHtml(prettyDate(x.date)) +
-            '<span class="fw-chip">' + escHtml(x.status || "Submitted") + "</span><br>" +
+          var x = v.list[b], st = expStat(x);
+          var chip = st === "Approved" ? '<span class="fw-chip ok">✅ Approved' + (x.decidedBy ? " by " + escHtml(x.decidedBy) : "") + "</span>" : (st === "Rejected" ? '<span class="fw-chip warn">✖ Rejected' + (x.decidedBy ? " by " + escHtml(x.decidedBy) : "") + "</span>" : '<span class="fw-chip wait">⏳ Pending</span>');
+          xh += '<div class="fw-item"' + (st === "Rejected" ? ' style="opacity:.75;"' : "") + '><strong>' + escHtml(x.name) + "</strong> • " + escHtml(prettyDate(x.date)) + chip + "<br>" +
             escHtml(x.category) + " • <strong>" + escHtml(formatINR(x.amount)) + "</strong>" +
             (x.description ? "<br>" + escHtml(x.description) : "") +
-            (x.site ? "<br>Site: " + escHtml(x.site) : "") + "</div>";
+            (x.site ? "<br>Site: " + escHtml(x.site) : "") +
+            (x.note ? '<br><span class="muted">💬 ' + escHtml(x.note) + "</span>" : "");
+          if (canDecide()) {
+            if (st === "Pending") xh += '<input type="text" id="ex-note-' + escHtml(x.id) + '" class="input-ctrl" style="margin-top:8px;" maxlength="200" placeholder="Note (optional)" />' +
+              '<div class="btn-row"><button type="button" class="btn btn-ok btn-sm" data-act="ex-decide" data-id="' + escHtml(x.id) + '" data-dec="Approved"><span>✅ Approve</span></button><button type="button" class="btn btn-danger btn-sm" data-act="ex-decide" data-id="' + escHtml(x.id) + '" data-dec="Rejected"><span>✖ Reject</span></button></div>';
+            xh += '<button type="button" class="btn btn-sm ' + (UI.delArm === "exp:" + x.id ? "btn-danger" : "btn-outline") + '" style="margin-top:8px;" data-act="ex-del" data-id="' + escHtml(x.id) + '"><span>' + (UI.delArm === "exp:" + x.id ? "Tap again to delete" : "🗑 Delete") + "</span></button>";
+          }
+          xh += "</div>";
         }
         box.innerHTML = xh || '<p class="card-subtitle" style="margin:0;">No expenses in this range.</p>';
       }
@@ -2426,21 +2554,21 @@ function generatePins() {
         ];
         var en = sortedKeys(v.byEmp);
         for (var i = 0; i < en.length; i++) sum.push([en[i], v.byEmp[en[i]].n, { v: Math.round(v.byEmp[en[i]].sum * 100) / 100, m: true }]);
-        sum.push([{ v: "Grand total", b: true }, v.list.length, { v: Math.round(v.total * 100) / 100, m: true }]);
+        sum.push([{ v: "Grand total (excludes rejected)", b: true }, v.list.length, { v: Math.round(v.total * 100) / 100, m: true }]);
         sum.push([]);
         sum.push([{ v: "By category", b: true }]);
         sum.push([{ v: "Category", b: true }, { v: "Entries", b: true }, { v: "Total (INR)", b: true }]);
         var cn = sortedKeys(v.byCat);
         for (var c = 0; c < cn.length; c++) sum.push([cn[c], v.byCat[cn[c]].n, { v: Math.round(v.byCat[cn[c]].sum * 100) / 100, m: true }]);
-        var det = [[{ v: "Date", b: true }, { v: "Employee", b: true }, { v: "Category", b: true }, { v: "Amount (INR)", b: true }, { v: "Description", b: true }, { v: "Site", b: true }, { v: "Status", b: true }, { v: "Submitted At", b: true }]];
+        var det = [[{ v: "Date", b: true }, { v: "Employee", b: true }, { v: "Category", b: true }, { v: "Amount (INR)", b: true }, { v: "Description", b: true }, { v: "Site", b: true }, { v: "Status", b: true }, { v: "Decided by", b: true }, { v: "Note", b: true }, { v: "Submitted At", b: true }]];
         var asc = v.list.slice().reverse();
         for (var d = 0; d < asc.length; d++) {
           var x = asc[d];
-          det.push([x.date, x.name, x.category, { v: x.amount, m: true }, x.description, x.site, x.status || "Submitted", x.serverTime]);
+          det.push([x.date, x.name, x.category, { v: x.amount, m: true }, x.description, x.site, expStat(x), x.decidedBy || "", x.note || "", x.serverTime]);
         }
         return makeXlsx([
           { name: "Summary", rows: sum, widths: [28, 10, 16] },
-          { name: "Expenses", rows: det, widths: [12, 20, 20, 14, 36, 24, 12, 26] }
+          { name: "Expenses", rows: det, widths: [12, 20, 20, 14, 36, 24, 12, 14, 26, 26] }
         ]);
       }
 
@@ -2525,7 +2653,7 @@ function bindPanelEvents() {
   bindX("btn-ex-xlsx", "expenses", "xlsx"); bindX("btn-ex-share", "expenses", "share"); bindX("btn-ex-csv", "expenses", "csv");
   bindX("btn-vs-xlsx", "visits", "xlsx"); bindX("btn-vs-share", "visits", "share"); bindX("btn-vs-csv", "visits", "csv");
   if (canShareFiles()) { var a = byId("btn-ex-share"); if (a) a.style.display = ""; var b = byId("btn-vs-share"); if (b) b.style.display = ""; }
-  var ids = ["ex-from", "ex-to", "ex-emp", "ex-cat"];
+  var ids = ["ex-from", "ex-to", "ex-emp", "ex-cat", "ex-status"];
   for (var i = 0; i < ids.length; i++) on(ids[i], "change", renderExpensesReport);
   var ids2 = ["vs-from", "vs-to", "vs-emp"];
   for (var j = 0; j < ids2.length; j++) on(ids2[j], "change", renderVisitsReport);
@@ -2548,6 +2676,9 @@ function onClick(e) {
     case "refresh": pullFromSheet(); refreshData(); showToast("Refreshing…"); break;
     case "tab": showTab(n.getAttribute("data-tab")); break;
     case "close-modal": closeModal(); break;
+    case "task-note": sendTaskNote(id); break;
+    case "ex-decide": decideExpense(id, n.getAttribute("data-dec")); break;
+    case "ex-del": deleteExpense(id); break;
     case "mode-switch": switchMode(); break;
     case "goto-tasks": showTab("tasks"); break;
     case "punch-in": punchIn(); break;
